@@ -5,7 +5,7 @@ Embedded-friendly containers for C and C++ with a single shared implementation p
 ## Quick start
 
 ```bash
-make all              # lib + 15 C++ tests + MCU example
+make all              # lib + 31 C++ tests + 2 MCU examples
 make test_c_api_smoke # C API smoke test (MCU)
 make mpu              # MPU examples + extended C API test
 make clean
@@ -53,9 +53,9 @@ C++ Ring<T>, Vector<T>, …  →  detail/*_core<Policy>  ←  c_api/*_box  →  
 - **Opaque C objects.** Each C container is a fixed-size blob (`unsigned char bytes[MEMKIT_*_OBJ_BYTES]`) verified at library build time via `include/memkit/c_api/static_checks.hpp`.
 - **Slim C API build.** All `extern "C"` bindings compile in one translation unit (`src/c_api/bindings.cpp`), which `#include`s per-container fragments under `src/c_api/bindings/*.inc.cpp` (those fragments are part of the same compile — not separate or dead code). Callback bridges and layout checks are header-only.
 
-**C++ (16 containers)** — all templates or header-only classes in `include/memkit/containers/`, included via `<memkit/memkit.hpp>`.
+**C++ (32 utilities)** — templates and header-only classes in `include/memkit/containers/`, included via `<memkit/memkit.hpp>`.
 
-**C (14 containers)** — type-erased by design (C23 has no generics). Each container exposes `*_init` / `*_create` / `*_destroy` over a shared `*_box` implementation. `SmallString` and `ByteRing` are C++-only.
+**C (14 containers)** — type-erased by design (C23 has no generics). Each container exposes `*_init` / `*_create` / `*_destroy` over a shared `*_box` implementation. Utility types (`SmallString`, `SmallBuffer`, queues, maps, `FixedVariant`, `TokenBucket`, `FixedIoVec`, `LookupTable`, etc.) are C++-only.
 
 Pick the API that fits your project:
 
@@ -105,7 +105,7 @@ Containers can store elements in several ways. The same options exist in C (flag
 The default Makefile target builds the MCU library and C++ tests:
 
 ```bash
-make all              # lib + 15 C++ tests + example_mcu
+make all              # lib + 31 C++ tests + 2 MCU examples
 make test_cpp         # C++ container tests only
 make test_c_api_smoke # minimal C API smoke test (MCU)
 make mpu              # MPU: example_mpu + example_mpu_c + test_c_api_extended
@@ -157,6 +157,23 @@ All containers live in namespace `memkit`. Operations return `memkit::status`; u
 | `HandlePool<T>` | `containers/handle_pool.hpp` | Generation-based stable handles |
 | `SmallString<N>` | `containers/small_string.hpp` | Fixed-capacity string (no heap) |
 | `ByteRing` | `containers/byte_ring.hpp` | Byte stream ring for UART/DMA I/O |
+| `IntrusiveListHead` | `containers/intrusive_list.hpp` | Intrusive singly/dlist heads (zero allocation) |
+| `SpscQueue<T>` | `containers/spsc_queue.hpp` | Lock-free single-producer/single-consumer queue |
+| `FlatMap<K,V>` | `containers/flat_map.hpp` | Sorted flat array map for tiny key sets |
+| `TimerWheel<N>` | `containers/timer_wheel.hpp` | Hashed timing wheel for deferred callbacks |
+| `DoubleBuffer<T>` | `containers/double_buffer.hpp` | Ping-pong buffer for DMA/ADC/audio |
+| `MpscQueue<T>` | `containers/mpsc_queue.hpp` | Bounded multi-producer single-consumer queue |
+| `EnumMap<Enum,V,N>` | `containers/enum_map.hpp` | O(1) enum-keyed map |
+| `RingLog<Record>` | `containers/ring_log.hpp` | Flight-recorder circular log (overwrite oldest) |
+| `SparseSet` | `containers/sparse_set.hpp` | O(1) active-ID set with dense iteration |
+| `SmallBuffer<N>` | `containers/small_buffer.hpp` | Length-prefixed binary payload buffer |
+| `FixedVariant<Ts...>` | `containers/fixed_variant.hpp` | Fixed-storage tagged union |
+| `TokenBucket` | `containers/token_bucket.hpp` | Tick-based rate limiter |
+| `FixedIoVec<N>` | `containers/fixed_iovec.hpp` | Fixed scatter/gather slice list for DMA |
+| `LookupTable<X,Y>` | `containers/lookup_table.hpp` | Sorted calibration table with interpolation |
+| `BitReader` / `BitWriter` | `containers/bit_stream.hpp` | MSB-first packed bit I/O |
+| `MovingAverage<T,N>` | `containers/running_stats.hpp` | Fixed-window moving average |
+| `WindowStats<T,N>` | `containers/running_stats.hpp` | Fixed-window min/max/average |
 
 Memory helpers: `memkit::memory::static_arena`, `fixed_buffer`, `fixed_pool`, and on MPU `heap_arena`, `mmap_arena`, `mmap_storage`.
 
@@ -210,6 +227,155 @@ uart.push_bytes(data, len);
 const std::uint8_t* chunk = nullptr;
 uart.readable_contiguous(&chunk);
 uart.commit_read(n);
+```
+
+### Intrusive lists, SPSC queue, FlatMap, and TimerWheel (embedded utilities)
+
+```cpp
+// Intrusive list — embed hooks in your structs, no node allocation
+struct work_item {
+    memkit::IntrusiveListHook hook{};
+    int id = 0;
+};
+memkit::IntrusiveListHead pending;
+pending.push_back(item.hook);
+
+// SPSC queue — ISR-safe single producer / single consumer (power-of-2 capacity)
+memkit::stl::array<std::byte, memkit::SpscQueue<int>::storage_bytes(16)> qbuf{};
+memkit::SpscQueue<int> events;
+events.init(qbuf, 16u);
+events.push(42);  // producer side
+int v; events.pop(v);  // consumer side
+
+// FlatMap — sorted array for small static maps (O(log n) lookup)
+memkit::stl::array<std::byte, memkit::FlatMap<int,int>::storage_bytes(8)> mapbuf{};
+memkit::FlatMap<int,int> cfg;
+cfg.init(mapbuf, 8u);
+cfg.put(1, 100);
+
+// TimerWheel — schedule callbacks N ticks in the future (intrusive nodes)
+memkit::TimerWheel<64> timers;
+timers.init();
+memkit::TimerWheelNode node{ .callback = my_cb, .user = ctx };
+timers.schedule(node, 10u);
+timers.tick();  // advance one tick
+```
+
+### DoubleBuffer, MpscQueue, EnumMap, RingLog, and SparseSet
+
+```cpp
+// Ping-pong DMA buffer
+memkit::DoubleBuffer<std::uint16_t> adc;
+adc.init(backing);  // 2 x slot_capacity samples
+adc.write_span()[0] = sample;
+adc.publish();
+
+// Multi-ISR → main loop queue
+memkit::MpscQueue<event_t> events;
+events.init(qbuf, 16u);
+
+// Mode / dispatch table keyed by enum
+memkit::EnumMap<mode, handler_t, 4> dispatch;
+
+// Crash/debug flight recorder
+memkit::RingLog<log_record> flight;
+flight.init(logbuf, 64u);
+flight.append({tick, code});
+
+// Track active entity/timer IDs with fast iteration
+memkit::SparseSet active;
+active.init(dense, sparse, max_entities);
+active.insert(id);
+for (std::size_t i = 0; i < active.size(); ++i) { use(active[i]); }
+```
+
+### SmallBuffer, FixedVariant, TokenBucket, FixedIoVec, and LookupTable
+
+```cpp
+// Protocol payload (binary, not null-terminated)
+memkit::SmallBuffer<64> frame;
+frame.assign(payload, len);
+
+// Message dispatch without heap
+memkit::FixedVariant<cmd_a, cmd_b, cmd_c> msg;
+msg.emplace<cmd_b>(cmd_b{ .id = 3 });
+
+// UART / CAN rate limiting
+memkit::TokenBucket tx_limit;
+tx_limit.init(100u, 5u);  // capacity, refill per tick
+tx_limit.refill();
+if (memkit::ok(tx_limit.try_consume())) { send_byte(); }
+
+// DMA scatter/gather
+memkit::FixedIoVec<4> tx;
+tx.push(header, sizeof header);
+tx.push(payload, payload_len);
+
+// Sensor calibration
+const std::int32_t adc_keys[] = {0, 1023};
+const float volts[] = {0.0f, 3.3f};
+memkit::LookupTable<std::int32_t, float> curve;
+curve.init(adc_keys, volts, 2u);
+float v = curve.at(raw_adc);
+```
+
+---
+
+## Composition patterns
+
+Most firmware workflows combine a few memkit types rather than needing new containers. Common recipes:
+
+| Pattern | Building blocks | Notes |
+|---------|-----------------|-------|
+| **ISR → main handoff** | `SpscQueue<T>` (one ISR) or `MpscQueue<T>` (several ISRs) | Consumer runs only on main thread |
+| **Deferred work / tasks** | `IntrusiveListHead` + `TimerWheel<N>` | Embed hooks in your structs; schedule callbacks |
+| **Command dispatch** | `EnumMap<cmd, handler>` or `FlatMap<id, fn>` | O(1) enum table for small sets |
+| **Active entity / timer set** | `SparseSet` or `HandlePool<T>` + `Bitset` | Dense iteration over live IDs |
+| **Protocol payload** | `SmallBuffer<N>` + `BitReader` / `BitWriter` | Length-prefixed binary + packed fields |
+| **DMA / ADC pipeline** | `DoubleBuffer<T>` or `FixedIoVec<N>` | Producer fills, `publish()`, consumer reads stable slot |
+| **Sensor filtering** | `MovingAverage<T,N>` or `WindowStats<T,N>` | Fixed window; no heap |
+| **Calibration** | `LookupTable<X,Y>` over flash arrays | Interpolate ADC → engineering units |
+| **Rate-limited I/O** | `TokenBucket` + `ByteRing` / UART driver | Call `refill()` from tick, `try_consume()` before TX |
+| **Flight recorder** | `RingLog<Record>` | Overwrites oldest; dump newest-first after fault |
+| **Typed messages** | `FixedVariant<Ts...>` | ISR/main queue of discriminated message types |
+
+### Example: multi-ISR event queue + calibration
+
+See `examples/example_embedded_patterns.cpp` — DMA ping-pong, `MpscQueue`, `LookupTable`, bit-stream decode, and moving average in one MCU-runnable demo.
+
+```cpp
+// Multiple ISRs push; main loop pops
+alignas(std::max_align_t) memkit::stl::array<std::byte, N> qbuf{};
+memkit::MpscQueue<event_t> events;
+events.init(qbuf.data(), 16u);
+
+void uart_isr() { (void)events.push(event_t{ .src = UART, .code = byte }); }
+void main_loop() {
+    event_t e;
+    while (memkit::ok(events.pop(e))) { dispatch(e); }
+}
+
+// Flash-resident calibration
+static const std::int32_t adc_x[] = {0, 1023};
+static const float adc_y[] = {0.0f, 3.3f};
+memkit::LookupTable<std::int32_t, float> curve;
+curve.init(adc_x, adc_y, 2u);
+float volts = curve.at(raw_adc);
+```
+
+### Example: DMA ping-pong
+
+```cpp
+memkit::DoubleBuffer<adc_block> dma;
+dma.init(backing.data(), 1u);
+
+// ISR / DMA half-complete: fill write slot, then publish
+auto* slot = dma.write_span().data();
+adc_read_into(slot);
+dma.publish();
+
+// Task context: read stable consumer slot
+process(dma.read_span().data());
 ```
 
 ### Initialization summary (C++)
@@ -428,6 +594,24 @@ ring_commit_write(&ring, n);
 | HandlePool | `HandlePool<T>` | `handle_pool_t` | 1 | Stable generation handles |
 | SmallString | `SmallString<N>` | — | C++ only | Fixed string, no heap |
 | ByteRing | `ByteRing` | — | C++ only | Byte I/O ring (`Ring<uint8_t>` semantics) |
+| IntrusiveList | `IntrusiveListHead` | — | C++ only | Intrusive list heads |
+| SpscQueue | `SpscQueue<T>` | — | C++ only | Lock-free SPSC queue |
+| FlatMap | `FlatMap<K,V>` | — | C++ only | Sorted flat array map |
+| TimerWheel | `TimerWheel<N>` | — | C++ only | Hashed timing wheel |
+| DoubleBuffer | `DoubleBuffer<T>` | — | C++ only | Ping-pong DMA buffer |
+| MpscQueue | `MpscQueue<T>` | — | C++ only | Multi-producer single-consumer queue |
+| EnumMap | `EnumMap<Enum,V,N>` | — | C++ only | Enum-keyed array map |
+| RingLog | `RingLog<Record>` | — | C++ only | Overwriting circular log |
+| SparseSet | `SparseSet` | — | C++ only | Sparse set for active IDs |
+| SmallBuffer | `SmallBuffer<N>` | — | C++ only | Binary payload buffer |
+| FixedVariant | `FixedVariant<Ts...>` | — | C++ only | Tagged union |
+| TokenBucket | `TokenBucket` | — | C++ only | Rate limiter |
+| FixedIoVec | `FixedIoVec<N>` | — | C++ only | Scatter/gather slices |
+| LookupTable | `LookupTable<X,Y>` | — | C++ only | Calibration / lookup table |
+| BitReader | `BitReader` | — | C++ only | MSB-first bit reader |
+| BitWriter | `BitWriter` | — | C++ only | MSB-first bit writer |
+| MovingAverage | `MovingAverage<T,N>` | — | C++ only | Moving average window |
+| WindowStats | `WindowStats<T,N>` | — | C++ only | Min/max/avg window |
 | Arena | `memory::static_arena`, … | `arena_t` | 1 | Bump allocator |
 
 ---
@@ -441,7 +625,7 @@ include/
   memkit_object_sizes.h Opaque C object sizes
   *.h                   Per-container C headers
   memkit/
-    memkit.hpp          C++ umbrella (16 containers)
+    memkit.hpp          C++ umbrella (32 utilities)
     stl.hpp             Zero-cost STL (MCU); optional heap aliases (MPU)
     containers/         C++ template wrappers
     detail/             Shared cores (internal)
@@ -454,11 +638,12 @@ src/
     bindings.cpp        Single TU for all C API extern "C" bindings
     bindings/*.inc.cpp  Per-container binding fragments (included, not compiled separately)
 tests/
-  test_*_cpp.cpp        C++ container tests (15)
+  test_*_cpp.cpp        C++ container tests (31)
   test_c_api_smoke.c    C API smoke: tier-1 init + arena create (MCU)
   test_c_api_extended.c Tier-1/2 C API + arena *_create (MPU)
 examples/
-  example_mcu.cpp       C++ MCU demo
+  example_mcu.cpp              C++ MCU demo (ring + arena)
+  example_embedded_patterns.cpp DMA, MPSC, calibration, bit stream, filtering
   example_mpu.cpp       C++ MPU demo
   example_mpu.c         C MPU demo (built as example_mpu_c)
 ```

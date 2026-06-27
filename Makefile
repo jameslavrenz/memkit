@@ -10,7 +10,13 @@ BUILD = build
 CPP_TESTS = test_ring_cpp test_vector_cpp test_hashmap_cpp test_list_cpp \
               test_dlist_cpp test_btree_cpp test_stack_queue_cpp test_pqueue_cpp \
               test_objpool_cpp test_bitset_cpp test_deque_cpp test_lrucache_cpp \
-              test_small_string_cpp test_byte_ring_cpp test_handle_pool_cpp
+              test_small_string_cpp test_byte_ring_cpp test_handle_pool_cpp \
+              test_intrusive_list_cpp test_spsc_queue_cpp test_flat_map_cpp test_timer_wheel_cpp \
+              test_double_buffer_cpp test_mpsc_queue_cpp test_enum_map_cpp test_ring_log_cpp \
+              test_sparse_set_cpp test_small_buffer_cpp test_fixed_variant_cpp test_token_bucket_cpp \
+              test_fixed_iovec_cpp test_lookup_table_cpp test_bit_stream_cpp test_running_stats_cpp
+
+MCU_EXAMPLES = example_mcu example_embedded_patterns
 
 .PHONY: all test_cpp test_c_api_smoke test_c_api_extended mcu mpu clean lib
 
@@ -52,8 +58,8 @@ $(BUILD)/test_c_api_extended.o: tests/test_c_api_extended.c | $(BUILD)/mpu
 $(BUILD)/test_c_api_extended: $(BUILD)/test_c_api_extended.o $(MPU_OBJS) | $(BUILD)/mpu/c_api
 	$(CXX) $(MPU_CXXFLAGS) -o $@ $(BUILD)/test_c_api_extended.o $(MPU_OBJS) $(LDFLAGS)
 
-mcu: $(BUILD)/example_mcu
-	./$(BUILD)/example_mcu
+mcu: $(addprefix $(BUILD)/,$(MCU_EXAMPLES))
+	@for e in $(MCU_EXAMPLES); do echo "==> $$e"; ./$(BUILD)/$$e || exit 1; done
 
 mpu: $(BUILD)/mpu/c_api $(BUILD)/example_mpu $(BUILD)/example_mpu_c test_c_api_extended
 	./$(BUILD)/example_mpu
@@ -61,6 +67,9 @@ mpu: $(BUILD)/mpu/c_api $(BUILD)/example_mpu $(BUILD)/example_mpu_c test_c_api_e
 
 $(BUILD)/example_mcu: examples/example_mcu.cpp $(LIB_OBJS) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -o $@ examples/example_mcu.cpp $(LIB_OBJS) $(LDFLAGS)
+
+$(BUILD)/example_embedded_patterns: examples/example_embedded_patterns.cpp $(LIB_OBJS) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -o $@ examples/example_embedded_patterns.cpp $(LIB_OBJS) $(LDFLAGS)
 
 MPU_CXXFLAGS = -std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
                -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1

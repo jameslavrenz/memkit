@@ -44,6 +44,9 @@ endif()
 add_executable(example_mcu examples/example_mcu.cpp)
 target_link_libraries(example_mcu PRIVATE memkit)
 
+add_executable(example_embedded_patterns examples/example_embedded_patterns.cpp)
+target_link_libraries(example_embedded_patterns PRIVATE memkit)
+
 if(MEMKIT_EMBEDDED_LINUX)
     add_executable(example_mpu examples/example_mpu.cpp)
     target_link_libraries(example_mpu PRIVATE memkit)
@@ -62,7 +65,11 @@ set(MEMKIT_CPP_TESTS
     test_ring_cpp test_vector_cpp test_hashmap_cpp test_list_cpp test_dlist_cpp
     test_btree_cpp test_stack_queue_cpp test_pqueue_cpp test_objpool_cpp
     test_bitset_cpp test_deque_cpp test_lrucache_cpp test_small_string_cpp test_byte_ring_cpp
-    test_handle_pool_cpp
+    test_handle_pool_cpp test_intrusive_list_cpp test_spsc_queue_cpp test_flat_map_cpp
+    test_timer_wheel_cpp test_double_buffer_cpp test_mpsc_queue_cpp test_enum_map_cpp
+    test_ring_log_cpp test_sparse_set_cpp test_small_buffer_cpp test_fixed_variant_cpp
+    test_token_bucket_cpp test_fixed_iovec_cpp test_lookup_table_cpp
+    test_bit_stream_cpp test_running_stats_cpp
 )
 
 foreach(test_name IN LISTS MEMKIT_CPP_TESTS)
