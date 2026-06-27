@@ -56,7 +56,20 @@ C++ Ring<T>, Vector<T>, …  →  detail/*_core<Policy>  ←  c_api/*_box  →  
 
 **C++ (32 utilities)** — templates and header-only classes in `include/memkit/containers/`, included via `<memkit/memkit.hpp>`.
 
-**C (14 containers)** — type-erased by design (C23 has no generics). Each container exposes `*_init` / `*_create` / `*_destroy` over a shared `*_box` implementation. Utility types (`SmallString`, `SmallBuffer`, queues, maps, `FixedVariant`, `TokenBucket`, `FixedIoVec`, `LookupTable`, etc.) are C++-only.
+**C (14 containers + arena)** — type-erased by design (C23 has no generics). Each container exposes `*_init` / `*_create` / `*_destroy` over a shared `*_box` implementation. Utility types (`SmallString`, `SmallBuffer`, queues, maps, `FixedVariant`, `TokenBucket`, `FixedIoVec`, `LookupTable`, etc.) are **C++-only** by design.
+
+### API completeness (v0.2)
+
+The public API is **feature-complete** for embedded use on Unix (macOS and Linux). Every shipped container is listed in the [C++ API reference](#c-api) and [C API reference](#c-api-1) below; authoritative signatures live in the headers.
+
+| Surface | Count | MCU | MPU | Notes |
+|---------|-------|-----|-----|-------|
+| C++ utilities | 32 | all | all | `#include <memkit/memkit.hpp>` |
+| C containers | 14 | tier 1 (8) | tier 1 + tier 2 (14) | `#include <memkit.h>` or per-container `*.h` |
+| C arena | 1 | yes | yes | Bump allocator; mmap/heap create on MPU |
+| C++-only helpers | 18 | yes | yes | No C bindings (see [cheat sheet](#container-cheat-sheet)) |
+
+**Tests:** 31 C++ test binaries cover all 32 C++ containers (`Stack` and `Queue` share `test_stack_queue_cpp.cpp`). C API coverage is `test_c_api_smoke.c` (tier 1, MCU) and `test_c_api_extended.c` (tier 1 + tier 2 + create paths, MPU).
 
 Pick the API that fits your project:
 
@@ -139,45 +152,47 @@ Include the umbrella header:
 
 All containers live in namespace `memkit`. Operations return `memkit::status`; use `memkit::ok(st)` to test success.
 
-### Containers
+### Containers (complete)
 
-| Class | Header (via memkit.hpp) | Role |
-|-------|-------------------------|------|
-| `Ring<T>` | `containers/ring.hpp` | Circular buffer; optional overwrite-on-full |
-| `Queue<T>` | `containers/queue.hpp` | FIFO ring |
-| `Deque<T>` | `containers/deque.hpp` | Double-ended ring |
-| `Vector<T>` | `containers/vector.hpp` | Contiguous array; optional growable |
-| `Stack<T>` | `containers/stack.hpp` | LIFO (vector core) |
-| `Bitset` | `containers/bitset.hpp` | Fixed bit set |
-| `ObjPool<T>` | `containers/objpool.hpp` | Fixed-size object pool |
-| `HashMap<K,V>` | `containers/hashmap.hpp` | Hash map (chaining or open addressing) |
-| `BTree<K,V>` | `containers/btree.hpp` | Ordered map |
-| `PQueue<T,Compare>` | `containers/pqueue.hpp` | Binary heap priority queue |
-| `List<T>` | `containers/list.hpp` | Singly linked list |
-| `DList<T>` | `containers/dlist.hpp` | Doubly linked list |
-| `LruCache<K,V>` | `containers/lrucache.hpp` | LRU cache |
-| `HandlePool<T>` | `containers/handle_pool.hpp` | Generation-based stable handles |
-| `SmallString<N>` | `containers/small_string.hpp` | Fixed-capacity string (no heap) |
-| `ByteRing` | `containers/byte_ring.hpp` | Byte stream ring for UART/DMA I/O |
-| `IntrusiveListHead` | `containers/intrusive_list.hpp` | Intrusive singly/dlist heads (zero allocation) |
-| `SpscQueue<T>` | `containers/spsc_queue.hpp` | Lock-free single-producer/single-consumer queue |
-| `FlatMap<K,V>` | `containers/flat_map.hpp` | Sorted flat array map for tiny key sets |
-| `TimerWheel<N>` | `containers/timer_wheel.hpp` | Hashed timing wheel for deferred callbacks |
-| `DoubleBuffer<T>` | `containers/double_buffer.hpp` | Ping-pong buffer for DMA/ADC/audio |
-| `MpscQueue<T>` | `containers/mpsc_queue.hpp` | Bounded multi-producer single-consumer queue |
-| `EnumMap<Enum,V,N>` | `containers/enum_map.hpp` | O(1) enum-keyed map |
-| `RingLog<Record>` | `containers/ring_log.hpp` | Flight-recorder circular log (overwrite oldest) |
-| `SparseSet` | `containers/sparse_set.hpp` | O(1) active-ID set with dense iteration |
-| `SmallBuffer<N>` | `containers/small_buffer.hpp` | Length-prefixed binary payload buffer |
-| `FixedVariant<Ts...>` | `containers/fixed_variant.hpp` | Fixed-storage tagged union |
-| `TokenBucket` | `containers/token_bucket.hpp` | Tick-based rate limiter |
-| `FixedIoVec<N>` | `containers/fixed_iovec.hpp` | Fixed scatter/gather slice list for DMA |
-| `LookupTable<X,Y>` | `containers/lookup_table.hpp` | Sorted calibration table with interpolation |
-| `BitReader` / `BitWriter` | `containers/bit_stream.hpp` | MSB-first packed bit I/O |
-| `MovingAverage<T,N>` | `containers/running_stats.hpp` | Fixed-window moving average |
-| `WindowStats<T,N>` | `containers/running_stats.hpp` | Fixed-window min/max/average |
+All types live in namespace `memkit`. Operations return `memkit::status` unless noted. Every class supports `init` from caller storage; most also support `init_from_arena`. Move-only; destructors call `clear()`.
 
-Memory helpers: `memkit::memory::static_arena`, `fixed_buffer`, `fixed_pool`, and on MPU `heap_arena`, `mmap_arena`, `mmap_storage`.
+| Class | Header | Role | Key API |
+|-------|--------|------|---------|
+| `Ring<T>` | `ring.hpp` | Circular buffer | `init`, `init_from_arena`, `push_back`/`front`, `pop_*`, `try_*`, `readable_contiguous`, `writable_contiguous`, `commit_read`/`write`, `ring_policy` |
+| `Queue<T>` | `queue.hpp` | FIFO ring | `init`, `init_from_arena`, `push_back`, `pop_front`, `peek_*`, `queue_policy` |
+| `Deque<T>` | `deque.hpp` | Double-ended ring | `init`, `init_from_arena`, `push_back`/`front`, `pop_*`, `peek_*`, `deque_policy` |
+| `Vector<T>` | `vector.hpp` | Contiguous array | `init`, `init_from_arena`, `push_back`, `pop_back`, `peek_at`, `set_at`, `at`, `reserve`, `vector_policy` |
+| `Stack<T>` | `stack.hpp` | LIFO (vector core) | `init`, `init_from_arena`, `push`, `pop`, `peek`, `stack_policy` |
+| `Bitset` | `bitset.hpp` | Fixed bit set | `init`, `init_from_arena`, `set`/`reset`/`test`/`toggle`, `find_first_*`, `union_with`, `intersect_with`, `load_bytes`/`store_bytes` |
+| `ObjPool<T>` | `objpool.hpp` | Object pool | `init`, `init_from_arena`, `alloc`, `free`, `contains` |
+| `HashMap<K,V>` | `hashmap.hpp` | Hash map | `init`, `init_from_arena`, `put`, `get`, `remove`, `contains`, `foreach`, `hashmap_strategy`, `hashmap_policy` |
+| `BTree<K,V>` | `btree.hpp` | Ordered map | `init`, `init_from_arena`, `insert`, `get`, `remove`, `contains`, `peek_min`/`max`, `foreach` |
+| `PQueue<T,Compare>` | `pqueue.hpp` | Binary heap | `init`, `init_from_arena`, `push`, `pop`, `peek`, `pqueue_policy` |
+| `List<T>` | `list.hpp` | Singly linked list | `init`, `init_from_arena`, `push_*`, `pop_*`, `insert_at`, `remove_at`, `foreach` |
+| `DList<T>` | `dlist.hpp` | Doubly linked list | Same as `List` plus `pop_back`, `foreach_reverse`, `front`/`back` pointers |
+| `LruCache<K,V>` | `lrucache.hpp` | LRU cache | `init`, `init_from_arena`, `get`, `put`, `remove`, `touch`, `contains`, `foreach_mru`/`lru` |
+| `HandlePool<T>` | `handle_pool.hpp` | Stable handles | `init`, `init_from_arena`, `acquire`, `release`, `valid`, `get`, `handle_t` |
+| `SmallString<N>` | `small_string.hpp` | Fixed string | `assign`, `append`, `clear`, `size`, `empty`, `view`, `c_str`, `operator==` |
+| `ByteRing` | `byte_ring.hpp` | Byte I/O ring | `init`, `init_from_arena`, `push_bytes`, `readable_contiguous`, `writable_contiguous`, `commit_read`/`write` |
+| `IntrusiveListHead` | `intrusive_list.hpp` | Intrusive lists | `push_back`/`front`, `erase`, `splice`, `is_linked`; hooks: `IntrusiveListHook`, `IntrusiveDListHook` |
+| `SpscQueue<T>` | `spsc_queue.hpp` | Lock-free SPSC | `init`, `init_from_arena`, `storage_bytes`, `push`, `pop`, `empty`, `full`, `size` |
+| `FlatMap<K,V>` | `flat_map.hpp` | Sorted flat map | `init`, `init_from_arena`, `put`, `get`, `remove`, `contains`, `find`, `foreach` |
+| `TimerWheel<N>` | `timer_wheel.hpp` | Timing wheel | `init`, `schedule`, `cancel`, `tick`; nodes: `TimerWheelNode` |
+| `DoubleBuffer<T>` | `double_buffer.hpp` | Ping-pong buffer | `init`, `init_from_arena`, `write_span`, `publish`, `read_span` |
+| `MpscQueue<T>` | `mpsc_queue.hpp` | Bounded MPSC | `init`, `init_from_arena`, `storage_bytes`, `storage_align`, `push`, `pop`, `empty`, `full`, `size` |
+| `EnumMap<Enum,V,N>` | `enum_map.hpp` | Enum map | `init`, `put`, `get`, `at`, `contains`, `clear`, `foreach` |
+| `RingLog<Record>` | `ring_log.hpp` | Flight recorder | `init`, `init_from_arena`, `append`, `clear`, `size`, `capacity`, `foreach` |
+| `SparseSet` | `sparse_set.hpp` | Active ID set | `init`, `init_from_arena`, `insert`, `remove`, `contains`, `clear`, dense `operator[]` |
+| `SmallBuffer<N>` | `small_buffer.hpp` | Binary payload | `assign`, `clear`, `size`, `capacity`, `empty`, `data`, `span` |
+| `FixedVariant<Ts...>` | `fixed_variant.hpp` | Tagged union | `emplace`, `holds`, `get`, `destroy`, `index` |
+| `TokenBucket` | `token_bucket.hpp` | Rate limiter | `init`, `try_consume`, `consume`, `refill`, `reset`, `tokens` |
+| `FixedIoVec<N>` | `fixed_iovec.hpp` | Scatter/gather | `push`, `clear`, `size`, `empty`, `slice`, `span` |
+| `LookupTable<X,Y>` | `lookup_table.hpp` | Calibration table | `init`, `at`, `lookup` (interpolate), `size` |
+| `BitReader` / `BitWriter` | `bit_stream.hpp` | Packed bits | `read`/`write`, `read_bits`/`write_bits`, `flush`, `reset` |
+| `MovingAverage<T,N>` | `running_stats.hpp` | Moving average | `push`, `average`, `clear`, `empty`, `full` |
+| `WindowStats<T,N>` | `running_stats.hpp` | Window stats | `push`, `min`, `max`, `average`, `clear` |
+
+**Memory helpers** (`memkit/memory/`): `fixed_buffer`, `static_arena`, `fixed_pool`; on MPU also `heap_arena`, `mmap_arena`, `mmap_storage`, `heap_storage`.
 
 Type aliases: `memkit::Arena<…>`, `memkit::FixedPool<…>`.
 
@@ -442,6 +457,46 @@ Controlled by `MEMKIT_C_API_FULL` and `MEMKIT_C_API_EXTENDED` in `memkit_config.
 | LruCache | `lrucache.h` |
 
 On MCU firmware that needs tier-2 containers, use the C++ API (`memkit.hpp`) with static or arena storage instead of the C stubs.
+
+### Complete C API reference
+
+Every C container follows the same conventions: `<name>_status_t`, `<name>_config_t`, opaque `<name>_t` blob, `<name>_init` / `<name>_create` / `<name>_deinit` / `<name>_destroy`, and `<name>_status_ok()`. Element types are passed as `void *` with `elem_size` (and optional copy/destroy callbacks).
+
+**Arena** (`arena.h`) — tier 1, all targets
+
+| Function | Purpose |
+|----------|---------|
+| `arena_init`, `arena_deinit` | Embed arena over caller buffer |
+| `arena_create`, `arena_create_with_backing`, `arena_destroy` | MPU: heap or mmap backing |
+| `arena_reset` | Free all bump allocations |
+| `arena_alloc`, `arena_calloc` | Aligned bump allocation (absolute pointer alignment) |
+| `arena_stats` | Capacity / used / remaining |
+
+**Tier 1 containers** — MCU + MPU
+
+| Container | Header | Key functions |
+|-----------|--------|---------------|
+| Ring | `ring.h` | `push_back`/`front`, `pop_*`, `peek_*`, `set_at`, `foreach`, `readable_contiguous`, `writable_contiguous`, `commit_read`/`write` |
+| Queue | `queue.h` | `push`, `pop`, `peek_*`, `foreach`, contiguous + commit (same as ring) |
+| Vector | `vector.h` | `reserve`, `push_back`, `pop_back`, `peek_*`, `set_at`, `at`, `foreach` |
+| Stack | `stack.h` | `push`, `pop`, `peek`, `foreach` |
+| Bitset | `bitset.h` | `set`/`reset`/`test`/`toggle`, `set_all`, `find_first_*`, `union_with`, `intersect_with`, `xor_with`, `complement`, `load_bytes`/`store_bytes`, `foreach` |
+| ObjPool | `objpool.h` | `alloc`, `free`, `contains`, `foreach` |
+| HandlePool | `handle_pool.h` | `acquire`, `release`, `valid`, `get`, `handle_t`, storage sizing helpers |
+
+**Tier 2 containers** — MPU full; MCU stubs return `*_ERR_UNSUPPORTED`
+
+| Container | Header | Key functions |
+|-----------|--------|---------------|
+| Deque | `deque.h` | `push_back`/`front`, `pop_*`, `peek_*`, `foreach`, contiguous + commit |
+| HashMap | `hashmap.h` | `put`, `get`, `remove`, `contains`, `foreach`; `hash_fn`, `key_eq_fn`; chaining or open addressing |
+| BTree | `btree.h` | `insert`, `get`, `remove`, `contains`, `peek_min`/`max`, `foreach`; `compare_fn` |
+| PQueue | `pqueue.h` | `push`, `pop`, `peek`, `foreach`; `compare_fn` |
+| List | `list.h` | `push_*`, `pop_*`, `peek_at`, `insert_at`, `remove_at`, `remove_first`, `front`, `foreach` |
+| DList | `dlist.h` | Same as list plus `back`, `foreach_reverse` |
+| LruCache | `lrucache.h` | `get`, `put`, `remove`, `contains`, `touch`, `peek`, `foreach_mru`/`lru`; key/value callbacks |
+
+**Umbrella header:** `#include <memkit.h>` pulls `memkit_config.h` and all container headers above.
 
 ### Opaque objects
 
@@ -713,3 +768,26 @@ memkit is intentionally slightly slower than a one-off C ring — you trade a fe
 ---
 
 ## Examples (MCU)
+
+| Example | Language | Demonstrates |
+|---------|----------|--------------|
+| `example_mcu.cpp` | C++ | Static ring + arena-backed ring |
+| `example_mcu_c.c` | C | Tier-1 ring + queue with caller storage |
+| `example_embedded_patterns.cpp` | C++ | DoubleBuffer, MpscQueue, LookupTable, bit stream, MovingAverage |
+| `example_comm_pipeline.cpp` | C++ | ByteRing RX, SpscQueue, TokenBucket pacing |
+
+MPU examples: `example_mpu.cpp` (C++ mmap arena), `example_mpu.c` (C arena create + tier-2 create helpers). Built with `make mpu`.
+
+---
+
+## Future work
+
+Not required for the current v0.2 feature set; possible follow-ups if demand appears:
+
+| Area | Description |
+|------|-------------|
+| **Windows support** | `VirtualAlloc`/`VirtualFree` for the mmap arena path, MSVC/clang-cl CI, and CMake-first host builds. Core MCU containers are already portable; the gap is MPU optional backing and toolchain plumbing. |
+| **Exhaustive unit / fuzz / concurrency tests** | Today’s 31 C++ tests are happy-path smoke/integration coverage. Deeper work would add multi-threaded MPSC/SPSC stress tests, systematic error-path cases, and fuzz/property tests. |
+| **Per-container C API test parity** | C++ has one test file per container (except shared stack/queue). C has `test_c_api_smoke.c` + `test_c_api_extended.c` integration tests only — not dedicated per-header unit tests matching the C++ matrix. |
+
+---
