@@ -74,6 +74,10 @@ if(MEMKIT_EMBEDDED_LINUX)
     add_executable(test_c_api_extended tests/test_c_api_extended.c)
     target_link_libraries(test_c_api_extended PRIVATE memkit)
     add_test(NAME test_c_api_extended COMMAND test_c_api_extended)
+
+    add_executable(test_heap_arena_cpp tests/test_heap_arena_cpp.cpp)
+    target_link_libraries(test_heap_arena_cpp PRIVATE memkit)
+    add_test(NAME test_heap_arena_cpp COMMAND test_heap_arena_cpp)
 endif()
 
 enable_testing()

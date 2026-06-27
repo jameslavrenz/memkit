@@ -64,7 +64,7 @@ Need every container in C on Linux             →  MPU + C API
 Need every container on MCU                    →  MCU + C++ API (memkit.hpp)
 ```
 
-Authoritative flags live in [`include/memkit_config.h`](../include/memkit_config.h).
+Authoritative flags live in [`include/memkit_config.h`](../include/memkit_config.h) (included directly by all C container headers).
 
 ---
 
@@ -106,11 +106,13 @@ Arena is **not** a replacement for fixed buffers on simple single-container case
 
 On MCU, default arena backing is **your fixed buffer** (`MEMKIT_DEFAULT_ARENA_BACKING = FIXED_BUFFER`), not mmap.
 
+On MPU, arena backing can be a **caller fixed buffer**, **heap** (`heap_storage` + `heap_arena`), or **mmap** (`mmap_storage` + `mmap_arena`). See `tests/test_heap_arena_cpp.cpp` for heap-backed arena usage.
+
 ### Pool semantics
 
 **Pool** in memkit means a **fixed slab with alloc/free of same-sized slots** — still static backing, not a separate runtime like `malloc`.
 
-- **`ObjPool` / `HandlePool`** — the pool *is* the container
+- **`ObjPool` / `HandlePool`** — the pool *is* the container (use these for fixed same-sized object pools; there is no separate `FixedPool` helper type)
 - **`List` / `DList` / `BTree`** — node storage from a pre-sized pool (`*_policy::fixed_pool`)
 - **HashMap chaining (MPU)** — nodes may come from arena/heap bump; a dedicated fixed node pool is a possible future tightening for hard caps
 

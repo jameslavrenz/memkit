@@ -7,7 +7,7 @@ Embedded-friendly containers for C and C++ with a single shared implementation p
 ## Quick start
 
 ```bash
-make all              # lib + 31 C++ tests + 9 C API tests + 4 MCU examples
+make all              # lib + 31 C++ tests + 8 C API tests + 4 MCU examples
 make benchmark        # timing + size vs hand-rolled C
 make test_c_api       # tier-1 C API tests (MCU)
 make lib-mcu-c        # freestanding libmemkit_mcu_c.a (C customers, no libstdc++)
@@ -26,7 +26,7 @@ ring.init(storage);
 ring.push_back(42);
 ```
 
-**C — static ring on MCU** (with optional [`memkit_helpers.h`](include/memkit_helpers.h) macros):
+**C — static ring on MCU** ([`memkit_helpers.h`](include/memkit_helpers.h) macros included via `memkit.h`):
 
 ```c
 #include <memkit.h>
@@ -71,7 +71,7 @@ The public API is **feature-complete** for embedded use on Unix (macOS and Linux
 | C arena | 1 | yes | yes | Bump allocator; mmap/heap create on MPU |
 | C++-only helpers | 18 | yes | yes | No C bindings (see [cheat sheet](#container-cheat-sheet)) |
 
-**Tests:** 31 C++ test binaries cover all 32 C++ containers (`Stack` and `Queue` share `test_stack_queue_cpp.cpp`). C API: **9 tier-1 tests** on MCU (`test_arena_c`, `test_ring_c`, … — one per header), **7 tier-2 tests** on MPU, plus **`test_c_api_extended.c`** (shared `arena_create` + all `*_create` helpers on one arena).
+**Tests:** 31 C++ test binaries cover all 32 C++ containers (`Stack` and `Queue` share `test_stack_queue_cpp.cpp`). C API: **8 tier-1 tests** on MCU (`test_arena_c`, `test_ring_c`, … — one per header), **7 tier-2 tests** on MPU, plus **`test_c_api_extended.c`** (shared `arena_create` + all `*_create` helpers on one arena). MPU also runs **`test_heap_arena_cpp`** (`heap_arena` + arena-backed ring).
 
 Pick the API that fits your project:
 
@@ -109,7 +109,7 @@ Containers can store elements in several ways. The same options exist in C (flag
 | Model | C flag / config | C++ backing | MCU | MPU |
 |-------|-----------------|-------------|-----|-----|
 | Fixed buffer | caller `storage` in `*_config` | `stl::array<T,N>`, `stl::span<T>`, raw bytes | yes | yes |
-| Fixed pool | slab / pool storage | `FixedPool<…>` | yes | yes |
+| Fixed pool | slab / pool storage | `ObjPool<T>` / `objpool_t` | yes | yes |
 | Arena | `arena_t *` + `*_FLAG_ARENA_STORAGE` | `init_from_arena(arena, …)` | yes | yes |
 | Heap | `*_FLAG_DYNAMIC_STORAGE` (create helpers) | heap arena / growable | no | yes |
 | mmap | arena with mmap backing | `memory::mmap_arena` | no | yes |
@@ -123,11 +123,11 @@ Containers can store elements in several ways. The same options exist in C (flag
 The default Makefile target builds the MCU library and C++ tests:
 
 ```bash
-make all              # lib + 31 C++ tests + 9 C API tests + 4 MCU examples
+make all              # lib + 31 C++ tests + 8 C API tests + 4 MCU examples
 make benchmark        # timing + size vs hand-rolled C
 make test_cpp         # C++ container tests only
-make test_c_api       # tier-1 C API tests (MCU, 9 binaries)
-make mpu              # MPU: examples + 7 tier-2 C API tests + integration test
+make test_c_api       # tier-1 C API tests (MCU, 8 binaries)
+make mpu              # MPU: tier-2 C API tests + test_heap_arena_cpp + integration test
 make clean
 ```
 
@@ -196,9 +196,9 @@ All types live in namespace `memkit`. Operations return `memkit::status` unless 
 | `MovingAverage<T,N>` | `running_stats.hpp` | Moving average | `push`, `average`, `clear`, `empty`, `full` |
 | `WindowStats<T,N>` | `running_stats.hpp` | Window stats | `push`, `min`, `max`, `average`, `clear` |
 
-**Memory helpers** (`memkit/memory/`): `fixed_buffer`, `static_arena`, `fixed_pool`; on MPU also `heap_arena`, `mmap_arena`, `mmap_storage`, `heap_storage`.
+**Memory helpers** (`memkit/memory/`): `fixed_buffer`, `static_arena`; on MPU also `heap_arena`, `mmap_arena`, `mmap_storage`, `heap_storage`.
 
-Type aliases: `memkit::Arena<…>`, `memkit::FixedPool<…>`.
+Type alias: `memkit::Arena<…>`.
 
 ### Typical MCU pattern (static storage)
 
@@ -500,7 +500,7 @@ Every C container follows the same conventions: `<name>_status_t`, `<name>_confi
 | DList | `dlist.h` | Same as list plus `back`, `foreach_reverse` |
 | LruCache | `lrucache.h` | `get`, `put`, `remove`, `contains`, `touch`, `peek`, `foreach_mru`/`lru`; key/value callbacks |
 
-**Umbrella header:** `#include <memkit.h>` pulls `memkit_config.h`, all container headers above, and optional [`memkit_helpers.h`](include/memkit_helpers.h) (macros only — no extra link cost).
+**Umbrella header:** `#include <memkit.h>` pulls `memkit_config.h`, all container headers above, and [`memkit_helpers.h`](include/memkit_helpers.h) (macros only — no extra link cost).
 
 **Helpers** reduce init boilerplate on MCU:
 
@@ -653,7 +653,7 @@ ring_commit_write(&ring, n);
 | Queue | `Queue<T>` | `queue_t` | 1 | FIFO |
 | Deque | `Deque<T>` | `deque_t` | 2 | Double-ended |
 | Vector | `Vector<T>` | `vector_t` | 1 | Growable optional |
-| Stack | `Stack<T>` | `stack_t` | 1 | Same core as vector |
+| Stack | `Stack<T>` | `cstack_t` | 1 | Same core as vector |
 | Bitset | `Bitset` | `bitset_t` | 1 | |
 | ObjPool | `ObjPool<T>` | `objpool_t` | 1 | Fixed capacity |
 | HashMap | `HashMap<K,V>` | `hashmap_t` | 2 | Chaining or open addressing |
@@ -702,7 +702,7 @@ include/
     containers/         C++ template wrappers
     detail/             Shared cores (internal)
     c_api/              C++ boxes, bridges, lifecycle helpers (internal)
-    memory/             Arena, fixed buffer/pool, heap, mmap
+    memory/             Arena, fixed buffer, heap, mmap (MPU)
 src/
   arena.cpp
   mmap_backing.cpp
@@ -710,8 +710,8 @@ src/
     bindings.cpp        Single TU for all C API extern "C" bindings
     bindings/*.inc.cpp  Per-container binding fragments (included, not compiled separately)
 tests/
-  test_*_cpp.cpp        C++ container tests (31)
-  test_*_c.c            C API per-container tests (9 MCU + 7 MPU tier 2)
+  test_*_cpp.cpp        C++ container tests (31 MCU + 1 MPU heap arena)
+  test_*_c.c            C API per-container tests (8 MCU + 7 MPU tier 2)
   test_c_api_extended.c C API integration: arena_create + all *_create (MPU)
 examples/
   example_mcu.cpp               C++ ring + arena (basic)
@@ -755,9 +755,9 @@ GitHub Actions (`.github/workflows/ci.yml`):
 
 | Job | What it runs |
 |-----|----------------|
-| `mcu-ubuntu` | Clang 21 — `make all` (C++ + C API tier 1) |
-| `mcu-gcc-ubuntu` | GCC 14 (C++23) — `make all` |
-| `mpu-ubuntu` | Clang 21 — `make mpu` |
+| `mcu-ubuntu` | Clang 21 — `make all` + `lib-mcu-c` / `check-lib-mcu-c` / `test-lib-mcu-c-link` |
+| `mcu-gcc-ubuntu` | GCC 14 (C++23) — `make all` + freestanding C lib targets |
+| `mpu-ubuntu` | Clang 21 — `make mpu` (tier-2 C API + `test_heap_arena_cpp`) |
 | `mpu-asan-ubuntu` | MPU + ASan/UBSan |
 | `cmake-mcu-ubuntu` | CMake MCU — `ctest` |
 | `cmake-ubuntu` | CMake MPU — `ctest` |

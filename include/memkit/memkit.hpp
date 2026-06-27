@@ -33,7 +33,6 @@
 #include "containers/timer_wheel.hpp"
 #include "containers/token_bucket.hpp"
 #include "containers/vector.hpp"
-#include "concepts.hpp"
 #include "memory/memory.hpp"
 #include "status.hpp"
 #include "stl.hpp"
@@ -42,8 +41,5 @@ namespace memkit {
 
 template<typename T, typename StorageBacking = memory::fixed_buffer>
 using Arena = memory::arena<StorageBacking>;
-
-template<typename StorageBacking = memory::fixed_buffer>
-using FixedPool = memory::fixed_pool<StorageBacking>;
 
 } // namespace memkit

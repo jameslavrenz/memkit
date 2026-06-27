@@ -34,6 +34,7 @@ C_API_MCU_TESTS = test_arena_c test_ring_c test_queue_c test_vector_c test_stack
                   test_bitset_c test_objpool_c test_handle_pool_c
 C_API_MPU_TESTS = test_deque_c test_hashmap_c test_btree_c test_pqueue_c test_list_c \
                   test_dlist_c test_lrucache_c
+MPU_CPP_TESTS = test_heap_arena_cpp
 
 MPU_CXXFLAGS = -std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
                -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
@@ -41,7 +42,7 @@ MPU_CFLAGS = -std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDD
              -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
 MPU_OBJS = $(BUILD)/mpu/arena.o $(BUILD)/mpu/mmap_backing.o $(BUILD)/mpu/c_api/bindings.o
 
-.PHONY: all test_cpp test_c_api test_c_api_mpu test_c_api_extended mcu mpu clean lib \
+.PHONY: all test_cpp test_c_api test_c_api_mpu test_c_api_extended test_cpp_mpu mcu mpu clean lib \
 	lib-mcu-c check-lib-mcu-c test-lib-mcu-c-link benchmark benchmark-size
 
 # Freestanding MCU C API archive (no libstdc++ at link time for C customers).
@@ -97,6 +98,9 @@ test_c_api: $(addprefix $(BUILD)/,$(C_API_MCU_TESTS))
 test_c_api_mpu: $(addprefix $(BUILD)/mpu/,$(C_API_MPU_TESTS))
 	@for t in $(C_API_MPU_TESTS); do echo "==> $$t"; ./$(BUILD)/mpu/$$t || exit 1; done
 
+test_cpp_mpu: $(addprefix $(BUILD)/mpu/,$(MPU_CPP_TESTS))
+	@for t in $(MPU_CPP_TESTS); do echo "==> $$t"; ./$(BUILD)/mpu/$$t || exit 1; done
+
 test_c_api_extended: $(BUILD)/test_c_api_extended
 	./$(BUILD)/test_c_api_extended
 
@@ -125,6 +129,13 @@ endef
 
 $(foreach t,$(C_API_MPU_TESTS),$(eval $(call C_API_MPU_TEST_RULE,$(t))))
 
+define MPU_CPP_TEST_RULE
+$(BUILD)/mpu/$(1): tests/$(1).cpp $(MPU_OBJS) | $(BUILD)/mpu/c_api
+	$(CXX) $(MPU_CXXFLAGS) tests/$(1).cpp $(MPU_OBJS) -o $$@ $(LDFLAGS)
+endef
+
+$(foreach t,$(MPU_CPP_TESTS),$(eval $(call MPU_CPP_TEST_RULE,$(t))))
+
 $(BUILD)/test_c_api_extended.o: tests/test_c_api_extended.c | $(BUILD)/mpu
 	$(CC) $(MPU_CFLAGS) -c -o $@ $<
 
@@ -134,7 +145,7 @@ $(BUILD)/test_c_api_extended: $(BUILD)/test_c_api_extended.o $(MPU_OBJS) | $(BUI
 mcu: $(addprefix $(BUILD)/,$(MCU_EXAMPLES)) $(addprefix $(BUILD)/,$(MCU_C_EXAMPLES))
 	@for e in $(MCU_EXAMPLES) $(MCU_C_EXAMPLES); do echo "==> $$e"; ./$(BUILD)/$$e || exit 1; done
 
-mpu: $(BUILD)/mpu/c_api $(BUILD)/example_mpu $(BUILD)/example_mpu_c test_c_api_mpu test_c_api_extended
+mpu: $(BUILD)/mpu/c_api $(BUILD)/example_mpu $(BUILD)/example_mpu_c test_c_api_mpu test_c_api_extended test_cpp_mpu
 	./$(BUILD)/example_mpu
 	./$(BUILD)/example_mpu_c
 

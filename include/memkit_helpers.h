@@ -2,9 +2,8 @@
 #define MEMKIT_HELPERS_H
 
 /*
- * Optional C API helpers: storage sizing, static init macros, early-return checks.
- *
- * Include via <memkit.h> or directly. Does not add code to the linked library.
+ * C API helpers: storage sizing, static init macros, early-return checks.
+ * Included via <memkit.h>; does not add code to the linked library.
  */
 
 #include "arena.h"

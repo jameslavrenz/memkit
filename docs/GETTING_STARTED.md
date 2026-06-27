@@ -49,7 +49,7 @@ int main()
 }
 ```
 
-**Next steps:** `examples/example_mcu.cpp`, `tests/test_queue_cpp.cpp`, [README C++ API](../README.md#c-api).
+**Next steps:** `examples/example_mcu.cpp`, `tests/test_stack_queue_cpp.cpp`, [README C++ API](../README.md#c-api).
 
 ---
 
@@ -152,9 +152,21 @@ hashmap_destroy(map);
 arena_destroy(arena);
 ```
 
-C++ MPU: same containers as MCU; optional `memkit::memory::mmap_arena` and growable policies.
+C++ MPU: same containers as MCU; use `memkit::memory::mmap_arena` or `heap_arena` for arena-backed init, and growable policies where needed.
 
-**Next steps:** `examples/example_mpu.c`, `examples/example_mpu.cpp`, `tests/test_hashmap_c.c`.
+**Heap-backed arena (C++):**
+
+```cpp
+#include <memkit/memkit.hpp>
+
+auto backing = memkit::memory::heap_storage::allocate(4096u);
+memkit::memory::heap_arena arena{std::move(backing)};
+
+memkit::Ring<int> log;
+log.init_from_arena(arena, 16u, memkit::ring_policy::overwrite_on_full);
+```
+
+**Next steps:** `examples/example_mpu.c`, `examples/example_mpu.cpp`, `tests/test_hashmap_c.c`, `tests/test_heap_arena_cpp.cpp`.
 
 ---
 
@@ -166,7 +178,7 @@ C++ MPU: same containers as MCU; optional `memkit::memory::mmap_arena` and growa
 git clone https://github.com/jameslavrenz/memkit.git
 cd memkit
 make all          # MCU: lib + tests + examples
-make mpu          # MPU tier-2 + integration test
+make mpu          # MPU: tier-2 C API + heap arena test + integration test
 ```
 
 ### CMake (in-tree)
@@ -185,7 +197,7 @@ include(FetchContent)
 FetchContent_Declare(
     memkit
     GIT_REPOSITORY https://github.com/jameslavrenz/memkit.git
-    GIT_TAG        v0.2.1
+    GIT_TAG        v0.2.3
 )
 FetchContent_MakeAvailable(memkit)
 
@@ -212,7 +224,7 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 
 1. Add `-DMEMKIT_MCU=1` (or `MEMKIT_MPU=1` + `EMBEDDED_LINUX=1` on Linux).
 2. Link the static `memkit` library (`arena.cpp`, `mmap_backing.cpp`, `c_api/bindings.cpp`).
-3. Include `<memkit/memkit.hpp>` (C++) or `<memkit.h>` / individual `*.h` (C).
+3. Include `<memkit/memkit.hpp>` (C++) or `<memkit.h>` / individual `*.h` (C). All C headers include `memkit_config.h` for target flags.
 4. Prefer **static storage** on MCU; use arena when several containers share one buffer.
 5. Always check status (`memkit::ok`, `*_status_ok`).
 

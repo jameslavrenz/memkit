@@ -2,7 +2,6 @@
 
 #include "arena.hpp"
 #include "fixed_buffer.hpp"
-#include "fixed_pool.hpp"
 #include "heap.hpp"
 #include "mmap.hpp"
 

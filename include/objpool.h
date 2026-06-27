@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 #include "arena.h"
-#include "arena_config.h"
+#include "memkit_config.h"
 #include "memkit_object_sizes.h"
 
 #ifdef __cplusplus

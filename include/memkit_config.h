@@ -137,11 +137,4 @@ typedef enum memkit_memory_model {
 #define MEMKIT_ALLOW_HEAP_STL 0
 #endif
 
-/* Backward compatibility with the previous arena_config.h name. */
-#if MEMKIT_ALLOW_HEAP
-#define RING_ALLOW_DYNAMIC_ALLOC 1
-#else
-#define RING_ALLOW_DYNAMIC_ALLOC 0
-#endif
-
 #endif /* MEMKIT_CONFIG_H */
