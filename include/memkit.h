@@ -29,5 +29,6 @@
 #include "objpool.h"
 #include "bitset.h"
 #include "handle_pool.h"
+#include "memkit_helpers.h"
 
 #endif /* MEMKIT_H */

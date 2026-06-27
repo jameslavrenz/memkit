@@ -7,8 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "queue.h"
-#include "ring.h"
+#include <memkit.h>
 
 typedef struct sensor_sample {
     uint32_t timestamp_ms;
@@ -17,24 +16,14 @@ typedef struct sensor_sample {
 
 int main(void)
 {
-    static uint8_t ring_storage[sizeof(sensor_sample_t) * 16u];
-    static uint8_t queue_storage[sizeof(sensor_sample_t) * 8u];
+    MEMKIT_ELEM_STORAGE(sensor_sample_t, 16, ring_buf);
+    MEMKIT_ELEM_STORAGE(sensor_sample_t, 8, queue_buf);
 
     ring_t ring;
-    assert(ring_status_ok(ring_init(&ring, &(ring_config_t){
-        .elem_size     = sizeof(sensor_sample_t),
-        .capacity      = 16u,
-        .storage       = ring_storage,
-        .storage_bytes = sizeof ring_storage,
-    })));
+    assert(ring_status_ok(MEMKIT_RING_INIT_STATIC(&ring, sensor_sample_t, ring_buf)));
 
     queue_t queue;
-    assert(queue_status_ok(queue_init(&queue, &(queue_config_t){
-        .elem_size     = sizeof(sensor_sample_t),
-        .capacity      = 8u,
-        .storage       = queue_storage,
-        .storage_bytes = sizeof queue_storage,
-    })));
+    assert(queue_status_ok(MEMKIT_QUEUE_INIT_STATIC(&queue, sensor_sample_t, queue_buf)));
 
     for (uint32_t i = 0u; i < 16u; ++i) {
         const sensor_sample_t sample = {

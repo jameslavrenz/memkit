@@ -2,6 +2,8 @@
 
 Embedded-friendly containers for C and C++ with a single shared implementation per container family. C++ templates are the primary API; the C API is a thin, type-erased layer over the same cores.
 
+**New here?** [Getting started](docs/GETTING_STARTED.md) · [Which container?](docs/CONTAINER_GUIDE.md)
+
 ## Quick start
 
 ```bash
@@ -23,17 +25,16 @@ ring.init(storage);
 ring.push_back(42);
 ```
 
-**C — static ring on MCU:**
+**C — static ring on MCU** (with optional [`memkit_helpers.h`](include/memkit_helpers.h) macros):
 
 ```c
-#include <ring.h>
+#include <memkit.h>
 
-static uint8_t storage[sizeof(int) * 8];
+MEMKIT_ELEM_STORAGE(int, 8, storage);
+
 ring_t ring;
-ring_init(&ring, &(ring_config_t){
-    .elem_size = sizeof(int), .capacity = 8,
-    .storage = storage, .storage_bytes = sizeof storage,
-});
+MEMKIT_RING_INIT_STATIC(&ring, int, storage);
+
 int value = 42;
 ring_push_back(&ring, &value);
 ring_deinit(&ring);
@@ -496,7 +497,17 @@ Every C container follows the same conventions: `<name>_status_t`, `<name>_confi
 | DList | `dlist.h` | Same as list plus `back`, `foreach_reverse` |
 | LruCache | `lrucache.h` | `get`, `put`, `remove`, `contains`, `touch`, `peek`, `foreach_mru`/`lru`; key/value callbacks |
 
-**Umbrella header:** `#include <memkit.h>` pulls `memkit_config.h` and all container headers above.
+**Umbrella header:** `#include <memkit.h>` pulls `memkit_config.h`, all container headers above, and optional [`memkit_helpers.h`](include/memkit_helpers.h) (macros only — no extra link cost).
+
+**Helpers** reduce init boilerplate on MCU:
+
+```c
+MEMKIT_ELEM_STORAGE(my_t, 16, buf);
+MEMKIT_QUEUE_INIT_STATIC(&queue, my_t, buf);
+MEMKIT_RETURN_VAL_IF_NOT_OK(queue_push(&queue, &item), -1);
+```
+
+See [Getting started](docs/GETTING_STARTED.md) and [Container guide](docs/CONTAINER_GUIDE.md).
 
 ### Opaque objects
 
@@ -678,6 +689,7 @@ ring_commit_write(&ring, n);
 ```
 include/
   memkit.h              C umbrella
+  memkit_helpers.h      C init macros, storage sizing, status strings
   memkit_config.h       Target and feature flags
   memkit_object_sizes.h Opaque C object sizes
   *.h                   Per-container C headers
@@ -700,11 +712,14 @@ tests/
   test_c_api_extended.c C API integration: arena_create + all *_create (MPU)
 examples/
   example_mcu.cpp               C++ ring + arena (basic)
-  example_mcu_c.c               C API ring + queue (tier 1)
+  example_mcu_c.c               C API ring + queue (tier 1, uses helpers)
   example_embedded_patterns.cpp DMA, MPSC, calibration, bit stream, filtering
   example_comm_pipeline.cpp     ByteRing RX + SPSC + TokenBucket pacing
   example_mpu.cpp               C++ MPU demo
   example_mpu.c                 C MPU demo (built as example_mpu_c)
+docs/
+  GETTING_STARTED.md            Tutorial: C/C++ paths, build, integration
+  CONTAINER_GUIDE.md            Which container? decision guide + recipes
 benchmarks/
   bench_timing.cpp              Push/pop timing vs hand-rolled C
   hand_rolled/                  Minimal C ring + FIFO for comparison
