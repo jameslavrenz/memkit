@@ -73,6 +73,8 @@ See [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) for the full rationale (shared 
 
 Both APIs share the same `detail/*_core` implementation; behavior matches when configuration is equivalent.
 
+See [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) for STL vs memkit-only containers and piecemeal C++ vendoring.
+
 ---
 
 ## Memory model (when to use what)

@@ -25,11 +25,11 @@ typedef enum ring_status {
 
 typedef enum ring_flag : unsigned {
     RING_FLAG_NONE              = 0u,
-    RING_FLAG_OWNS_STORAGE      = 1u << 0u,
-    RING_FLAG_OWNS_SELF         = 1u << 1u,
-    RING_FLAG_DYNAMIC_STORAGE   = 1u << 2u,
-    RING_FLAG_ARENA_STORAGE     = 1u << 3u,
-    RING_FLAG_OVERWRITE_ON_FULL = 1u << 4u,
+    RING_FLAG_OWNS_STORAGE      = 1u << 0u, /* ring frees element storage on deinit */
+    RING_FLAG_OWNS_SELF          = 1u << 1u, /* ring object was heap/arena allocated */
+    RING_FLAG_DYNAMIC_STORAGE   = 1u << 2u, /* element storage from heap (MPU only) */
+    RING_FLAG_ARENA_STORAGE     = 1u << 3u, /* element storage from bump arena */
+    RING_FLAG_OVERWRITE_ON_FULL = 1u << 4u, /* drop oldest element when full on push */
 } ring_flag_t;
 
 typedef ring_status_t (*ring_copy_fn)(void *dst, const void *src, void *user);
@@ -41,19 +41,19 @@ typedef struct ring {
 } ring_t;
 
 typedef struct ring_config {
-    size_t elem_size;
-    size_t capacity;
+    size_t elem_size;     /* sizeof one element in bytes */
+    size_t capacity;      /* max elements in storage */
 
-    void *storage;
-    size_t storage_bytes;
+    void *storage;        /* caller-owned buffer; NULL if create/arena owns storage */
+    size_t storage_bytes; /* byte size of storage; >= elem_size * capacity */
 
-    arena_t *arena;
+    arena_t *arena;       /* optional arena for arena-owned or create paths */
 
-    ring_copy_fn copy_fn;
-    ring_destroy_fn destroy_fn;
-    void *user;
+    ring_copy_fn copy_fn;       /* optional; NULL uses memcpy for POD */
+    ring_destroy_fn destroy_fn; /* optional; called when slot cleared */
+    void *user;                 /* passed to copy/destroy callbacks */
 
-    unsigned flags;
+    unsigned flags;       /* RING_FLAG_* ownership and behavior */
 } ring_config_t;
 
 [[nodiscard]] ring_status_t ring_init(ring_t *ring, const ring_config_t *config);

@@ -41,9 +41,9 @@ typedef struct arena {
 } arena_t;
 
 typedef struct arena_config {
-    void *backing;
-    size_t backing_bytes;
-    unsigned flags;
+    void *backing;        /* start of arena memory region */
+    size_t backing_bytes; /* total arena size in bytes */
+    unsigned flags;       /* ARENA_FLAG_* backing ownership */
 } arena_config_t;
 
 typedef struct arena_stats {

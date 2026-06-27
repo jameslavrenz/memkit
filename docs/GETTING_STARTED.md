@@ -7,6 +7,7 @@ This guide walks through the **80% path** most firmware projects need: static st
 | You are… | Start here |
 |----------|------------|
 | New to memkit — want the “why” | [Design philosophy](DESIGN_PHILOSOPHY.md) |
+| STL vs memkit, MCU/MPU flags, vendoring one container | [Adoption guide](ADOPTION_GUIDE.md) |
 | C firmware, bare-metal (MCU) | [C on MCU](#c-on-mcu-tier-1) |
 | C++ firmware, bare-metal | [C++ on MCU](#c-on-mcu) |
 | Embedded Linux (MPU) | [MPU heap / mmap](#mpu-embedded-linux) |
@@ -244,6 +245,9 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 
 ## Where to go next
 
+- [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — STL mapping, build flags, ownership, piecemeal / prebuilt `.a` integration
+- [C_API_REFERENCE.md](C_API_REFERENCE.md) — C config fields, flags, and function parameters
+- [CXX_API_REFERENCE.md](CXX_API_REFERENCE.md) — C++ init overloads, policies, methods
 - [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) — MCU vs MPU, memory models, C/C++ and STL policy
 - [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) — which container for your use case
 - [DISTRIBUTING_MCU_C.md](DISTRIBUTING_MCU_C.md) — ship prebuilt C API lib without libstdc++

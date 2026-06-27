@@ -92,5 +92,6 @@ Any match means the archive was not built with `-fno-exceptions -fno-rtti` (or w
 
 ## Related docs
 
+- [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — STL mapping, MCU/MPU compile flags, ownership, vendoring headers
 - [GETTING_STARTED.md](GETTING_STARTED.md) — C API usage
 - [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) — tier-1 container picker

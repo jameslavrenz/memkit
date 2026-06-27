@@ -26,11 +26,11 @@ typedef enum list_status {
 
 typedef enum list_flag : unsigned {
     LIST_FLAG_NONE            = 0u,
-    LIST_FLAG_OWNS_STORAGE    = 1u << 0u,
+    LIST_FLAG_OWNS_STORAGE    = 1u << 0u, /* list frees node pool on deinit */
     LIST_FLAG_OWNS_SELF       = 1u << 1u,
     LIST_FLAG_DYNAMIC_STORAGE = 1u << 2u,
     LIST_FLAG_ARENA_STORAGE   = 1u << 3u,
-    LIST_FLAG_FIXED_CAPACITY  = 1u << 4u,
+    LIST_FLAG_FIXED_CAPACITY  = 1u << 4u, /* push fails when node pool exhausted */
 } list_flag_t;
 
 typedef list_status_t (*list_copy_fn)(void *dst, const void *src, void *user);
@@ -52,10 +52,10 @@ typedef struct list {
 } list_t;
 
 typedef struct list_config {
-    size_t elem_size;
+    size_t elem_size;       /* payload bytes per node */
 
-    size_t node_capacity;
-    void *node_pool;
+    size_t node_capacity;   /* max nodes in pool */
+    void *node_pool;        /* byte slab; size >= node_capacity * list_node_stride(elem_size) */
     size_t node_pool_bytes;
 
     arena_t *arena;

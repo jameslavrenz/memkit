@@ -50,7 +50,7 @@ typedef struct pqueue_config {
 
     arena_t *arena;
 
-    pqueue_compare_fn compare_fn;
+    pqueue_compare_fn compare_fn; /* required; <0 means first arg is higher priority */
     pqueue_copy_fn copy_fn;
     pqueue_destroy_fn destroy_fn;
     void *user;

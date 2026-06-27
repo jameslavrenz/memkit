@@ -26,7 +26,7 @@ typedef enum handle_pool_status {
 typedef enum handle_pool_flag : unsigned {
     HANDLE_POOL_FLAG_NONE            = 0u,
     HANDLE_POOL_FLAG_OWNS_STORAGE    = 1u << 0u,
-    HANDLE_POOL_FLAG_OWNS_META       = 1u << 1u,
+    HANDLE_POOL_FLAG_OWNS_META       = 1u << 1u, /* frees generations + free_stack */
     HANDLE_POOL_FLAG_OWNS_SELF       = 1u << 2u,
     HANDLE_POOL_FLAG_DYNAMIC_STORAGE = 1u << 3u,
     HANDLE_POOL_FLAG_ARENA_STORAGE   = 1u << 4u,

@@ -26,12 +26,12 @@ typedef enum objpool_status {
 
 typedef enum objpool_flag : unsigned {
     OBJPOOL_FLAG_NONE            = 0u,
-    OBJPOOL_FLAG_OWNS_STORAGE    = 1u << 0u,
-    OBJPOOL_FLAG_OWNS_META       = 1u << 1u,
+    OBJPOOL_FLAG_OWNS_STORAGE    = 1u << 0u, /* pool frees element slab on deinit */
+    OBJPOOL_FLAG_OWNS_META       = 1u << 1u, /* pool frees free_stack and used_bits */
     OBJPOOL_FLAG_OWNS_SELF       = 1u << 2u,
     OBJPOOL_FLAG_DYNAMIC_STORAGE = 1u << 3u,
     OBJPOOL_FLAG_ARENA_STORAGE   = 1u << 4u,
-    OBJPOOL_FLAG_FIXED_CAPACITY  = 1u << 5u,
+    OBJPOOL_FLAG_FIXED_CAPACITY  = 1u << 5u, /* alloc fails when full */
 } objpool_flag_t;
 
 typedef objpool_status_t (*objpool_copy_fn)(void *dst, const void *src, void *user);
@@ -46,13 +46,13 @@ typedef struct objpool_config {
     size_t elem_size;
     size_t capacity;
 
-    void *storage;
+    void *storage;              /* element slab; objpool_storage_bytes(elem_size, cap) */
     size_t storage_bytes;
 
-    uint32_t *free_stack;
+    uint32_t *free_stack;       /* index stack; objpool_free_stack_bytes(capacity) */
     size_t free_stack_bytes;
 
-    uint8_t *used_bits;
+    uint8_t *used_bits;         /* live-slot bitmap; objpool_used_bits_bytes(capacity) */
     size_t used_bits_bytes;
 
     arena_t *arena;

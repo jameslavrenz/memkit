@@ -18,6 +18,7 @@ enum class ring_policy : unsigned {
     overwrite_on_full = 1u << 0u,
 };
 
+/** Fixed-capacity circular buffer. Index 0 is the logical front (oldest element). */
 template<typename T>
 class Ring {
 public:
@@ -44,6 +45,7 @@ public:
 
     ~Ring() { clear(); release_storage(); }
 
+    /** Bind to caller storage. capacity must fit in storage (see init overloads). */
     [[nodiscard]] status init(std::byte* storage, std::size_t capacity) noexcept
     {
         detail::typed_element_policy<T> policy{};
@@ -76,6 +78,7 @@ public:
     }
 
     template<typename Arena>
+    /** Allocate element storage from arena; arena must outlive the ring. */
     [[nodiscard]] status init_from_arena(
         Arena& arena,
         std::size_t capacity,

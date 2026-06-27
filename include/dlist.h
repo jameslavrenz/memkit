@@ -30,7 +30,7 @@ typedef enum dlist_flag : unsigned {
     DLIST_FLAG_OWNS_SELF       = 1u << 1u,
     DLIST_FLAG_DYNAMIC_STORAGE = 1u << 2u,
     DLIST_FLAG_ARENA_STORAGE   = 1u << 3u,
-    DLIST_FLAG_FIXED_CAPACITY  = 1u << 4u,
+    DLIST_FLAG_FIXED_CAPACITY  = 1u << 4u, /* push fails when node pool exhausted */
 } dlist_flag_t;
 
 typedef dlist_status_t (*dlist_copy_fn)(void *dst, const void *src, void *user);

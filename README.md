@@ -2,7 +2,7 @@
 
 Embedded-friendly containers for C and C++ with a single shared implementation per container family. C++ templates are the primary API; the C API is a thin, type-erased layer over the same cores.
 
-**New here?** [Getting started](docs/GETTING_STARTED.md) · [Design philosophy](docs/DESIGN_PHILOSOPHY.md) · [Which container?](docs/CONTAINER_GUIDE.md) · [Bare-metal C lib](docs/DISTRIBUTING_MCU_C.md)
+**New here?** [Getting started](docs/GETTING_STARTED.md) · [Adoption guide](docs/ADOPTION_GUIDE.md) · [C API reference](docs/C_API_REFERENCE.md) · [C++ API reference](docs/CXX_API_REFERENCE.md) · [Design philosophy](docs/DESIGN_PHILOSOPHY.md) · [Which container?](docs/CONTAINER_GUIDE.md) · [Bare-metal C lib](docs/DISTRIBUTING_MCU_C.md)
 
 ## Quick start
 
@@ -153,6 +153,8 @@ Include the umbrella header:
 ```cpp
 #include <memkit/memkit.hpp>
 ```
+
+**Parameter reference:** [docs/CXX_API_REFERENCE.md](docs/CXX_API_REFERENCE.md) — init overloads, policies, return types.
 
 All containers live in namespace `memkit`. Operations return `memkit::status`; use `memkit::ok(st)` to test success.
 
@@ -430,6 +432,8 @@ Include the umbrella header:
 ```
 
 Or include individual headers (`ring.h`, `vector.h`, …). All symbols are C23, `[[nodiscard]]` where supported.
+
+**Parameter reference:** [docs/C_API_REFERENCE.md](docs/C_API_REFERENCE.md) — config fields, flags, callbacks, and operations.
 
 ### Tiers
 
@@ -722,6 +726,9 @@ examples/
   example_mpu.c                 C MPU demo (built as example_mpu_c)
 docs/
   GETTING_STARTED.md            Tutorial: C/C++ paths, build, integration
+  ADOPTION_GUIDE.md             STL vs memkit, MCU/MPU flags, ownership, piecemeal vendoring
+  C_API_REFERENCE.md            C API: config fields, flags, function parameters
+  CXX_API_REFERENCE.md            C++ API: init overloads, policies, methods
   DESIGN_PHILOSOPHY.md          Why MCU/MPU, memory models, C vs C++, STL policy
   CONTAINER_GUIDE.md            Which container? decision guide + recipes
   DISTRIBUTING_MCU_C.md         Prebuilt libmemkit_mcu_c.a for C firmware (no libstdc++)

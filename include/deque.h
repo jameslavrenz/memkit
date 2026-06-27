@@ -25,7 +25,7 @@ typedef enum deque_status {
 
 typedef enum deque_flag : unsigned {
     DEQUE_FLAG_NONE            = 0u,
-    DEQUE_FLAG_OWNS_STORAGE    = 1u << 0u,
+    DEQUE_FLAG_OWNS_STORAGE    = 1u << 0u, /* deque frees element storage on deinit */
     DEQUE_FLAG_OWNS_SELF       = 1u << 1u,
     DEQUE_FLAG_DYNAMIC_STORAGE = 1u << 2u,
     DEQUE_FLAG_ARENA_STORAGE   = 1u << 3u,

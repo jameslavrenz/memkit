@@ -223,6 +223,7 @@ C opaque blobs (`ring_t.bytes[MEMKIT_RING_OBJ_BYTES]`) hide layout; sizes are ch
 
 ## Related docs
 
+- [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — STL vs memkit containers, build flags, ownership, piecemeal integration
 - [GETTING_STARTED.md](GETTING_STARTED.md) — hands-on paths
 - [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) — which container for which job
 - [DISTRIBUTING_MCU_C.md](DISTRIBUTING_MCU_C.md) — prebuilt C library without libstdc++ link

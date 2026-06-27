@@ -25,11 +25,11 @@ typedef enum queue_status {
 
 typedef enum queue_flag : unsigned {
     QUEUE_FLAG_NONE            = 0u,
-    QUEUE_FLAG_OWNS_STORAGE    = 1u << 0u,
-    QUEUE_FLAG_OWNS_SELF       = 1u << 1u,
-    QUEUE_FLAG_DYNAMIC_STORAGE = 1u << 2u,
-    QUEUE_FLAG_ARENA_STORAGE   = 1u << 3u,
-    QUEUE_FLAG_GROWABLE        = 1u << 4u,
+    QUEUE_FLAG_OWNS_STORAGE    = 1u << 0u, /* queue frees element storage on deinit */
+    QUEUE_FLAG_OWNS_SELF       = 1u << 1u, /* queue object was heap/arena allocated */
+    QUEUE_FLAG_DYNAMIC_STORAGE = 1u << 2u, /* element storage from heap (MPU only) */
+    QUEUE_FLAG_ARENA_STORAGE   = 1u << 3u, /* element storage from bump arena */
+    QUEUE_FLAG_GROWABLE        = 1u << 4u, /* double capacity when full (MPU) */
 } queue_flag_t;
 
 typedef queue_status_t (*queue_copy_fn)(void *dst, const void *src, void *user);
@@ -41,11 +41,11 @@ typedef struct queue {
 } queue_t;
 
 typedef struct queue_config {
-    size_t elem_size;
-    size_t capacity;
+    size_t elem_size;     /* sizeof one element in bytes */
+    size_t capacity;      /* max elements in storage */
 
-    void *storage;
-    size_t storage_bytes;
+    void *storage;        /* caller-owned buffer; NULL if create/arena owns storage */
+    size_t storage_bytes; /* byte size of storage; >= elem_size * capacity */
 
     arena_t *arena;
 
@@ -53,7 +53,7 @@ typedef struct queue_config {
     queue_destroy_fn destroy_fn;
     void *user;
 
-    unsigned flags;
+    unsigned flags;       /* QUEUE_FLAG_* */
 } queue_config_t;
 
 [[nodiscard]] queue_status_t queue_init(queue_t *queue, const queue_config_t *config);

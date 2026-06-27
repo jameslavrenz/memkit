@@ -25,11 +25,11 @@ typedef enum stack_status {
 
 typedef enum stack_flag : unsigned {
     STACK_FLAG_NONE            = 0u,
-    STACK_FLAG_OWNS_STORAGE    = 1u << 0u,
-    STACK_FLAG_OWNS_SELF       = 1u << 1u,
-    STACK_FLAG_DYNAMIC_STORAGE = 1u << 2u,
-    STACK_FLAG_ARENA_STORAGE   = 1u << 3u,
-    STACK_FLAG_GROWABLE        = 1u << 4u,
+    STACK_FLAG_OWNS_STORAGE    = 1u << 0u, /* stack frees element storage on deinit */
+    STACK_FLAG_OWNS_SELF       = 1u << 1u, /* stack object was heap/arena allocated */
+    STACK_FLAG_DYNAMIC_STORAGE = 1u << 2u, /* element storage from heap (MPU only) */
+    STACK_FLAG_ARENA_STORAGE   = 1u << 3u, /* element storage from bump arena */
+    STACK_FLAG_GROWABLE        = 1u << 4u, /* double capacity when full (MPU) */
 } stack_flag_t;
 
 typedef stack_status_t (*stack_copy_fn)(void *dst, const void *src, void *user);
@@ -44,7 +44,7 @@ typedef struct stack_config {
     size_t elem_size;
     size_t capacity;
 
-    void *storage;
+    void *storage;        /* caller-owned buffer; >= elem_size * capacity bytes */
     size_t storage_bytes;
 
     arena_t *arena;
@@ -53,7 +53,7 @@ typedef struct stack_config {
     stack_destroy_fn destroy_fn;
     void *user;
 
-    unsigned flags;
+    unsigned flags;       /* STACK_FLAG_* */
 } stack_config_t;
 
 [[nodiscard]] stack_status_t stack_init(cstack_t *stack, const stack_config_t *config);

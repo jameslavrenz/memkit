@@ -26,11 +26,11 @@ typedef enum bitset_status {
 
 typedef enum bitset_flag : unsigned {
     BITSET_FLAG_NONE            = 0u,
-    BITSET_FLAG_OWNS_STORAGE    = 1u << 0u,
+    BITSET_FLAG_OWNS_STORAGE    = 1u << 0u, /* bitset frees bit storage on deinit */
     BITSET_FLAG_OWNS_SELF       = 1u << 1u,
     BITSET_FLAG_DYNAMIC_STORAGE = 1u << 2u,
     BITSET_FLAG_ARENA_STORAGE   = 1u << 3u,
-    BITSET_FLAG_FIXED_CAPACITY  = 1u << 4u,
+    BITSET_FLAG_FIXED_CAPACITY  = 1u << 4u, /* fixed bit count; no grow */
 } bitset_flag_t;
 
 typedef bitset_status_t (*bitset_visit_fn)(size_t index, void *user);
@@ -40,9 +40,9 @@ typedef struct bitset {
 } bitset_t;
 
 typedef struct bitset_config {
-    size_t capacity;
+    size_t capacity;      /* number of bits */
 
-    void *storage;
+    void *storage;        /* caller-owned bytes; use bitset_storage_bytes(capacity) */
     size_t storage_bytes;
 
     arena_t *arena;
