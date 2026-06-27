@@ -17,6 +17,8 @@
  *   MEMKIT_MEMORY_ARENA         bump allocator (default backing for both targets)
  *   MEMKIT_MEMORY_HEAP          malloc/free (MPU only)
  *   MEMKIT_MEMORY_MMAP          mmap-backed arena (MPU only, optional)
+ *
+ * Design rationale: docs/DESIGN_PHILOSOPHY.md
  */
 
 #include <stddef.h>

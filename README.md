@@ -2,7 +2,7 @@
 
 Embedded-friendly containers for C and C++ with a single shared implementation per container family. C++ templates are the primary API; the C API is a thin, type-erased layer over the same cores.
 
-**New here?** [Getting started](docs/GETTING_STARTED.md) · [Which container?](docs/CONTAINER_GUIDE.md) · [Bare-metal C lib](docs/DISTRIBUTING_MCU_C.md)
+**New here?** [Getting started](docs/GETTING_STARTED.md) · [Design philosophy](docs/DESIGN_PHILOSOPHY.md) · [Which container?](docs/CONTAINER_GUIDE.md) · [Bare-metal C lib](docs/DISTRIBUTING_MCU_C.md)
 
 ## Quick start
 
@@ -41,7 +41,7 @@ ring_push_back(&ring, &value);
 ring_deinit(&ring);
 ```
 
-See [Build](#build), [C++ API](#c-api), and [C API](#c-api-1) below for full details.
+See [Build](#build), [Design philosophy](docs/DESIGN_PHILOSOPHY.md), [C++ API](#c-api), and [C API](#c-api-1) below for full details.
 
 ## Design
 
@@ -83,6 +83,8 @@ Pick the API that fits your project:
 | Mixed C/C++ codebase | C API from C; C++ templates from C++ |
 
 ## Targets
+
+For **why** MCU and MPU exist and how to choose memory models, see [Design philosophy](docs/DESIGN_PHILOSOPHY.md). Quick reference:
 
 memkit distinguishes two build targets (see `include/memkit_config.h`):
 
@@ -720,6 +722,7 @@ examples/
   example_mpu.c                 C MPU demo (built as example_mpu_c)
 docs/
   GETTING_STARTED.md            Tutorial: C/C++ paths, build, integration
+  DESIGN_PHILOSOPHY.md          Why MCU/MPU, memory models, C vs C++, STL policy
   CONTAINER_GUIDE.md            Which container? decision guide + recipes
   DISTRIBUTING_MCU_C.md         Prebuilt libmemkit_mcu_c.a for C firmware (no libstdc++)
 benchmarks/

@@ -67,7 +67,9 @@ MpscQueue many producers, one consumer, lock-free (bounded)
 | `.c` translation units, smallest tier-1 image | C API + `memkit_helpers.h` |
 | C++ firmware, all 32 utilities on MCU | `#include <memkit/memkit.hpp>` |
 | Mixed codebase | C API from C; C++ templates from C++ |
-| Need HashMap/BTree/… in pure C on MCU | Not available — use C++ for tier 2 or embed a minimal map yourself |
+| Need HashMap/BTree/… in pure C on MCU | Not in tier-1 C — use C++ headers or MPU build |
+
+See [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) for the full rationale (shared cores, STL policy, linking).
 
 Both APIs share the same `detail/*_core` implementation; behavior matches when configuration is equivalent.
 
