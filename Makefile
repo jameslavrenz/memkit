@@ -30,9 +30,20 @@ else
 SIZE_LDFLAGS = $(LDFLAGS) -Wl,--gc-sections
 endif
 
-.PHONY: all test_cpp test_c_api_smoke test_c_api_extended mcu mpu clean lib benchmark benchmark-size
+C_API_MCU_TESTS = test_arena_c test_ring_c test_queue_c test_vector_c test_stack_c \
+                  test_bitset_c test_objpool_c test_handle_pool_c
+C_API_MPU_TESTS = test_deque_c test_hashmap_c test_btree_c test_pqueue_c test_list_c \
+                  test_dlist_c test_lrucache_c
 
-all: lib test_cpp mcu
+MPU_CXXFLAGS = -std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
+               -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
+MPU_CFLAGS = -std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
+             -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
+MPU_OBJS = $(BUILD)/mpu/arena.o $(BUILD)/mpu/mmap_backing.o $(BUILD)/mpu/c_api/bindings.o
+
+.PHONY: all test_cpp test_c_api test_c_api_smoke test_c_api_mpu test_c_api_extended mcu mpu clean lib benchmark benchmark-size
+
+all: lib test_cpp test_c_api mcu
 
 lib: $(BUILD)/c_api $(LIB_OBJS)
 
@@ -44,6 +55,12 @@ $(BUILD)/c_api/%.o: src/c_api/%.cpp | $(BUILD)/c_api
 
 test_cpp: $(addprefix $(BUILD)/,$(CPP_TESTS))
 	@for t in $(CPP_TESTS); do echo "==> $$t"; ./$(BUILD)/$$t || exit 1; done
+
+test_c_api: $(addprefix $(BUILD)/,$(C_API_MCU_TESTS))
+	@for t in $(C_API_MCU_TESTS); do echo "==> $$t"; ./$(BUILD)/$$t || exit 1; done
+
+test_c_api_mpu: $(addprefix $(BUILD)/mpu/,$(C_API_MPU_TESTS))
+	@for t in $(C_API_MPU_TESTS); do echo "==> $$t"; ./$(BUILD)/mpu/$$t || exit 1; done
 
 test_c_api_smoke: $(BUILD)/test_c_api_smoke
 	./$(BUILD)/test_c_api_smoke
@@ -57,6 +74,24 @@ $(BUILD)/$(1): tests/$(1).cpp $(LIB_OBJS) | $(BUILD)
 endef
 
 $(foreach t,$(CPP_TESTS),$(eval $(call CPP_TEST_RULE,$(t))))
+
+define C_API_MCU_TEST_RULE
+$(BUILD)/$(1).o: tests/$(1).c | $(BUILD)
+	$(CC) $(CFLAGS) -c -o $$@ $$<
+$(BUILD)/$(1): $(BUILD)/$(1).o $(LIB_OBJS) | $(BUILD)
+	$(CXX) -o $$@ $(BUILD)/$(1).o $(LIB_OBJS) $(LDFLAGS)
+endef
+
+$(foreach t,$(C_API_MCU_TESTS),$(eval $(call C_API_MCU_TEST_RULE,$(t))))
+
+define C_API_MPU_TEST_RULE
+$(BUILD)/mpu/$(1).o: tests/$(1).c | $(BUILD)/mpu
+	$(CC) $(MPU_CFLAGS) -c -o $$@ $$<
+$(BUILD)/mpu/$(1): $(BUILD)/mpu/$(1).o $(MPU_OBJS) | $(BUILD)/mpu/c_api
+	$(CXX) $(MPU_CXXFLAGS) -o $$@ $(BUILD)/mpu/$(1).o $(MPU_OBJS) $(LDFLAGS)
+endef
+
+$(foreach t,$(C_API_MPU_TESTS),$(eval $(call C_API_MPU_TEST_RULE,$(t))))
 
 $(BUILD)/test_c_api_smoke.o: tests/test_c_api_smoke.c | $(BUILD)
 	$(CXX) $(CFLAGS) -x c -c -o $@ $<
@@ -73,7 +108,7 @@ $(BUILD)/test_c_api_extended: $(BUILD)/test_c_api_extended.o $(MPU_OBJS) | $(BUI
 mcu: $(addprefix $(BUILD)/,$(MCU_EXAMPLES)) $(addprefix $(BUILD)/,$(MCU_C_EXAMPLES))
 	@for e in $(MCU_EXAMPLES) $(MCU_C_EXAMPLES); do echo "==> $$e"; ./$(BUILD)/$$e || exit 1; done
 
-mpu: $(BUILD)/mpu/c_api $(BUILD)/example_mpu $(BUILD)/example_mpu_c test_c_api_extended
+mpu: $(BUILD)/mpu/c_api $(BUILD)/example_mpu $(BUILD)/example_mpu_c test_c_api_mpu test_c_api_extended
 	./$(BUILD)/example_mpu
 	./$(BUILD)/example_mpu_c
 
@@ -124,18 +159,11 @@ benchmark-size: $(BUILD)/size_ring_memkit $(BUILD)/size_ring_c $(BUILD)/size_que
 	done
 	@echo "note: memkit binaries include libmemkit (arena + C API); hand-rolled C is standalone"
 
-MPU_CXXFLAGS = -std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
-               -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
-MPU_CFLAGS = -std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
-             -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
-
 $(BUILD)/mpu/%.o: src/%.cpp | $(BUILD)/mpu
 	$(CXX) $(MPU_CXXFLAGS) -c -o $@ $<
 
 $(BUILD)/mpu/c_api/%.o: src/c_api/%.cpp | $(BUILD)/mpu/c_api
 	$(CXX) $(MPU_CXXFLAGS) -c -o $@ $<
-
-MPU_OBJS = $(BUILD)/mpu/arena.o $(BUILD)/mpu/mmap_backing.o $(BUILD)/mpu/c_api/bindings.o
 
 $(BUILD)/example_mpu: examples/example_mpu.cpp $(MPU_OBJS) | $(BUILD)/mpu/c_api
 	$(CXX) $(MPU_CXXFLAGS) -o $@ examples/example_mpu.cpp $(MPU_OBJS) $(LDFLAGS)

@@ -60,12 +60,34 @@ if(MEMKIT_EMBEDDED_LINUX)
     add_executable(example_mpu_c examples/example_mpu.c)
     target_link_libraries(example_mpu_c PRIVATE memkit)
 
+    set(MEMKIT_C_API_MPU_TESTS
+        test_deque_c test_hashmap_c test_btree_c test_pqueue_c test_list_c
+        test_dlist_c test_lrucache_c
+    )
+
+    foreach(test_name IN LISTS MEMKIT_C_API_MPU_TESTS)
+        add_executable(${test_name} tests/${test_name}.c)
+        target_link_libraries(${test_name} PRIVATE memkit)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endforeach()
+
     add_executable(test_c_api_extended tests/test_c_api_extended.c)
     target_link_libraries(test_c_api_extended PRIVATE memkit)
     add_test(NAME test_c_api_extended COMMAND test_c_api_extended)
 endif()
 
 enable_testing()
+
+set(MEMKIT_C_API_MCU_TESTS
+    test_arena_c test_ring_c test_queue_c test_vector_c test_stack_c
+    test_bitset_c test_objpool_c test_handle_pool_c
+)
+
+foreach(test_name IN LISTS MEMKIT_C_API_MCU_TESTS)
+    add_executable(${test_name} tests/${test_name}.c)
+    target_link_libraries(${test_name} PRIVATE memkit)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
 
 set(MEMKIT_CPP_TESTS
     test_ring_cpp test_vector_cpp test_hashmap_cpp test_list_cpp test_dlist_cpp

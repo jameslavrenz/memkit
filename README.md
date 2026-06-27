@@ -5,10 +5,11 @@ Embedded-friendly containers for C and C++ with a single shared implementation p
 ## Quick start
 
 ```bash
-make all              # lib + 31 C++ tests + 4 MCU examples
+make all              # lib + 31 C++ tests + 9 C API tests + 4 MCU examples
 make benchmark        # timing + size vs hand-rolled C
-make test_c_api_smoke # C API smoke test (MCU)
-make mpu              # MPU examples + extended C API test
+make test_c_api       # tier-1 C API tests (MCU)
+make test_c_api_smoke # legacy quick C API smoke (MCU)
+make mpu              # MPU examples + tier-2 C API tests
 make clean
 ```
 
@@ -69,7 +70,7 @@ The public API is **feature-complete** for embedded use on Unix (macOS and Linux
 | C arena | 1 | yes | yes | Bump allocator; mmap/heap create on MPU |
 | C++-only helpers | 18 | yes | yes | No C bindings (see [cheat sheet](#container-cheat-sheet)) |
 
-**Tests:** 31 C++ test binaries cover all 32 C++ containers (`Stack` and `Queue` share `test_stack_queue_cpp.cpp`). C API coverage is `test_c_api_smoke.c` (tier 1, MCU) and `test_c_api_extended.c` (tier 1 + tier 2 + create paths, MPU).
+**Tests:** 31 C++ test binaries cover all 32 C++ containers (`Stack` and `Queue` share `test_stack_queue_cpp.cpp`). C API: **9 tier-1 tests** on MCU (`test_arena_c`, `test_ring_c`, … — one per header) plus **7 tier-2 tests** on MPU (`test_deque_c`, `test_hashmap_c`, …). Legacy integration tests: `test_c_api_smoke.c`, `test_c_api_extended.c`.
 
 Pick the API that fits your project:
 
@@ -119,11 +120,12 @@ Containers can store elements in several ways. The same options exist in C (flag
 The default Makefile target builds the MCU library and C++ tests:
 
 ```bash
-make all              # lib + 31 C++ tests + 4 MCU examples
+make all              # lib + 31 C++ tests + 9 C API tests + 4 MCU examples
 make benchmark        # timing + size vs hand-rolled C
 make test_cpp         # C++ container tests only
-make test_c_api_smoke # minimal C API smoke test (MCU)
-make mpu              # MPU: example_mpu + example_mpu_c + test_c_api_extended
+make test_c_api       # tier-1 C API tests (MCU, 9 binaries)
+make test_c_api_smoke # legacy quick C API smoke (MCU)
+make mpu              # MPU: examples + 7 tier-2 C API tests + test_c_api_extended
 make clean
 ```
 
@@ -696,8 +698,9 @@ src/
     bindings/*.inc.cpp  Per-container binding fragments (included, not compiled separately)
 tests/
   test_*_cpp.cpp        C++ container tests (31)
-  test_c_api_smoke.c    C API smoke: tier-1 init + arena create (MCU)
-  test_c_api_extended.c Tier-1/2 C API + arena *_create (MPU)
+  test_*_c.c            C API per-container tests (9 MCU + 7 MPU tier 2)
+  test_c_api_smoke.c    Legacy C API smoke (MCU)
+  test_c_api_extended.c Legacy C API integration (MPU)
 examples/
   example_mcu.cpp               C++ ring + arena (basic)
   example_mcu_c.c               C API ring + queue (tier 1)
@@ -786,8 +789,7 @@ Not required for the current v0.2 feature set; possible follow-ups if demand app
 
 | Area | Description |
 |------|-------------|
+| **Exhaustive unit / fuzz / concurrency tests** | C++ and C API tests are happy-path smoke/integration coverage. Deeper work would add multi-threaded MPSC/SPSC stress tests, systematic error-path cases, fuzz/property tests, and shared C/C++ scenario equivalence checks. |
 | **Windows support** | `VirtualAlloc`/`VirtualFree` for the mmap arena path, MSVC/clang-cl CI, and CMake-first host builds. Core MCU containers are already portable; the gap is MPU optional backing and toolchain plumbing. |
-| **Exhaustive unit / fuzz / concurrency tests** | Today’s 31 C++ tests are happy-path smoke/integration coverage. Deeper work would add multi-threaded MPSC/SPSC stress tests, systematic error-path cases, and fuzz/property tests. |
-| **Per-container C API test parity** | C++ has one test file per container (except shared stack/queue). C has `test_c_api_smoke.c` + `test_c_api_extended.c` integration tests only — not dedicated per-header unit tests matching the C++ matrix. |
 
 ---
