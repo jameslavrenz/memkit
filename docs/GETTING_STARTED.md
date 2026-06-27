@@ -195,6 +195,18 @@ target_compile_definitions(my_firmware PRIVATE MEMKIT_MCU=1)
 
 Add `-I` paths are handled by the `memkit` target (`target_include_directories` is PUBLIC).
 
+### Bare-metal C distribution (no libstdc++ at link)
+
+If you ship **prebuilt objects** to C-only MCU firmware, build the freestanding archive:
+
+```bash
+make lib-mcu-c              # build/libmemkit_mcu_c.a
+make check-lib-mcu-c        # verify no libstdc++ symbols
+make test-lib-mcu-c-link    # smoke-test: link with cc only
+```
+
+Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRIBUTING_MCU_C.md](DISTRIBUTING_MCU_C.md).
+
 ### Firmware checklist
 
 1. Add `-DMEMKIT_MCU=1` (or `MEMKIT_MPU=1` + `EMBEDDED_LINUX=1` on Linux).
@@ -220,6 +232,7 @@ Add `-I` paths are handled by the `memkit` target (`target_include_directories` 
 ## Where to go next
 
 - [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) — which container for your use case
+- [DISTRIBUTING_MCU_C.md](DISTRIBUTING_MCU_C.md) — ship prebuilt C API lib without libstdc++
 - [README](../README.md) — complete API reference
 - `examples/example_embedded_patterns.cpp` — DMA, MPSC, calibration, bit streams
 - `examples/example_comm_pipeline.cpp` — ByteRing + SPSC + TokenBucket

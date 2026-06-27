@@ -2,7 +2,7 @@
 
 Embedded-friendly containers for C and C++ with a single shared implementation per container family. C++ templates are the primary API; the C API is a thin, type-erased layer over the same cores.
 
-**New here?** [Getting started](docs/GETTING_STARTED.md) · [Which container?](docs/CONTAINER_GUIDE.md)
+**New here?** [Getting started](docs/GETTING_STARTED.md) · [Which container?](docs/CONTAINER_GUIDE.md) · [Bare-metal C lib](docs/DISTRIBUTING_MCU_C.md)
 
 ## Quick start
 
@@ -10,6 +10,7 @@ Embedded-friendly containers for C and C++ with a single shared implementation p
 make all              # lib + 31 C++ tests + 9 C API tests + 4 MCU examples
 make benchmark        # timing + size vs hand-rolled C
 make test_c_api       # tier-1 C API tests (MCU)
+make lib-mcu-c        # freestanding libmemkit_mcu_c.a (C customers, no libstdc++)
 make mpu              # MPU: examples + tier-2 C API tests + integration test
 make clean
 ```
@@ -720,6 +721,7 @@ examples/
 docs/
   GETTING_STARTED.md            Tutorial: C/C++ paths, build, integration
   CONTAINER_GUIDE.md            Which container? decision guide + recipes
+  DISTRIBUTING_MCU_C.md         Prebuilt libmemkit_mcu_c.a for C firmware (no libstdc++)
 benchmarks/
   bench_timing.cpp              Push/pop timing vs hand-rolled C
   hand_rolled/                  Minimal C ring + FIFO for comparison

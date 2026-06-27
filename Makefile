@@ -41,11 +41,46 @@ MPU_CFLAGS = -std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDD
              -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
 MPU_OBJS = $(BUILD)/mpu/arena.o $(BUILD)/mpu/mmap_backing.o $(BUILD)/mpu/c_api/bindings.o
 
-.PHONY: all test_cpp test_c_api test_c_api_mpu test_c_api_extended mcu mpu clean lib benchmark benchmark-size
+.PHONY: all test_cpp test_c_api test_c_api_mpu test_c_api_extended mcu mpu clean lib \
+	lib-mcu-c check-lib-mcu-c test-lib-mcu-c-link benchmark benchmark-size
+
+# Freestanding MCU C API archive (no libstdc++ at link time for C customers).
+MCU_C_CXXFLAGS = $(CXXFLAGS) -fno-exceptions -fno-rtti -ffreestanding
+MCU_C_LIB_DIR = $(BUILD)/mcu_c
+MCU_C_LIB_OBJS = $(MCU_C_LIB_DIR)/arena.o $(MCU_C_LIB_DIR)/c_api/bindings.o
+MCU_C_LIB = $(BUILD)/libmemkit_mcu_c.a
 
 all: lib test_cpp test_c_api mcu
 
 lib: $(BUILD)/c_api $(LIB_OBJS)
+
+lib-mcu-c: $(MCU_C_LIB)
+
+$(MCU_C_LIB): $(MCU_C_LIB_OBJS) | $(BUILD) $(BUILD)/mcu_c
+	ar rcs $@ $^
+	@echo "==> $@ (freestanding tier-1 C API; link with cc, not libstdc++)"
+
+$(MCU_C_LIB_DIR)/%.o: src/%.cpp | $(MCU_C_LIB_DIR)
+	$(CXX) $(MCU_C_CXXFLAGS) -c -o $@ $<
+
+$(MCU_C_LIB_DIR)/c_api/%.o: src/c_api/%.cpp | $(BUILD)
+	mkdir -p $(MCU_C_LIB_DIR)/c_api
+	$(CXX) $(MCU_C_CXXFLAGS) -c -o $@ $<
+
+check-lib-mcu-c: $(MCU_C_LIB)
+	@bad=$$(nm -u $(MCU_C_LIB) 2>/dev/null | grep -E '__cxa_|__gxx_|_ZSt' || true); \
+	if [ -n "$$bad" ]; then \
+		echo "error: C++ runtime symbols in $(MCU_C_LIB):"; \
+		echo "$$bad"; \
+		exit 1; \
+	fi
+	@echo "check-lib-mcu-c: ok (no libstdc++ linkage symbols)"
+
+test-lib-mcu-c-link: lib-mcu-c
+	$(CC) $(CFLAGS) -c -o $(BUILD)/example_mcu_c_libtest.o examples/example_mcu_c.c
+	$(CC) -o $(BUILD)/example_mcu_c_libtest $(BUILD)/example_mcu_c_libtest.o $(MCU_C_LIB) $(LDFLAGS)
+	./$(BUILD)/example_mcu_c_libtest
+	@echo "test-lib-mcu-c-link: ok (linked with cc only)"
 
 $(BUILD)/%.o: src/%.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -170,6 +205,12 @@ $(BUILD)/mpu/c_api:
 
 $(BUILD)/c_api:
 	mkdir -p $(BUILD)/c_api
+
+$(BUILD)/mcu_c/c_api:
+	mkdir -p $(BUILD)/mcu_c/c_api
+
+$(BUILD)/mcu_c:
+	mkdir -p $(BUILD)/mcu_c/c_api
 
 $(BUILD)/mpu:
 	mkdir -p $(BUILD)/mpu
