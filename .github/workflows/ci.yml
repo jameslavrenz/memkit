@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  mcu-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: llvm
+          key: llvm-21-${{ runner.os }}-v1
+      - name: Install Clang 21 (C++26)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          directory: ${{ github.workspace }}/llvm
+      - name: Export LLVM compiler paths
+        run: |
+          echo "${{ github.workspace }}/llvm/bin" >> "$GITHUB_PATH"
+          echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Build and test (MCU)
+        run: |
+          make all
+          make test_c_api_smoke
+
+  mpu-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: llvm
+          key: llvm-21-${{ runner.os }}-v1
+      - name: Install Clang 21 (C++26)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          directory: ${{ github.workspace }}/llvm
+      - name: Export LLVM compiler paths
+        run: |
+          echo "${{ github.workspace }}/llvm/bin" >> "$GITHUB_PATH"
+          echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Build and test (MPU)
+        run: make mpu
+
+  mpu-asan-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: llvm
+          key: llvm-21-${{ runner.os }}-v1
+      - name: Install Clang 21 (C++26)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          directory: ${{ github.workspace }}/llvm
+      - name: Export LLVM compiler paths
+        run: |
+          echo "${{ github.workspace }}/llvm/bin" >> "$GITHUB_PATH"
+          echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Build and test (MPU + ASan/UBSan)
+        run: |
+          make clean
+          make mpu \
+            CXXFLAGS="-std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1 -fsanitize=address,undefined -fno-omit-frame-pointer" \
+            CFLAGS="-std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1 -fsanitize=address,undefined -fno-omit-frame-pointer" \
+            LDFLAGS="-fsanitize=address,undefined"
+
+  cmake-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: llvm
+          key: llvm-21-${{ runner.os }}-v1
+      - name: Install Clang 21 (C++26)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          directory: ${{ github.workspace }}/llvm
+      - name: Export LLVM compiler paths
+        run: |
+          echo "${{ github.workspace }}/llvm/bin" >> "$GITHUB_PATH"
+          echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake -B build -DMEMKIT_EMBEDDED_LINUX=ON -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_C_COMPILER="$CC"
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test (MCU + MPU)
+        run: |
+          make all
+          make test_c_api_smoke
+          make mpu
