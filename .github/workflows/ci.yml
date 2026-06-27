@@ -33,10 +33,30 @@ jobs:
           echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-      - name: Build and test (MCU)
+      - name: Build and test (MCU Clang)
         run: |
           make all
           make test_c_api_smoke
+
+  mcu-gcc-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GCC 14
+        run: sudo apt-get update && sudo apt-get install -y g++-14 gcc-14
+      - name: Build and test (MCU GCC)
+        run: |
+          make clean
+          make all \
+            CC=gcc-14 \
+            CXX=g++-14 \
+            CXXFLAGS="-std=c++23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MCU=1" \
+            CFLAGS="-std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MCU=1"
+          make test_c_api_smoke \
+            CC=gcc-14 \
+            CXX=g++-14 \
+            CXXFLAGS="-std=c++23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MCU=1" \
+            CFLAGS="-std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MCU=1"
 
   mpu-ubuntu:
     runs-on: ubuntu-latest
@@ -93,6 +113,35 @@ jobs:
             CFLAGS="-std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1 -fsanitize=address,undefined -fno-omit-frame-pointer" \
             LDFLAGS="-fsanitize=address,undefined"
 
+  cmake-mcu-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: llvm
+          key: llvm-21-${{ runner.os }}-v1
+      - name: Install Clang 21 (C++26)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          directory: ${{ github.workspace }}/llvm
+      - name: Export LLVM compiler paths
+        run: |
+          echo "${{ github.workspace }}/llvm/bin" >> "$GITHUB_PATH"
+          echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Configure (MCU)
+        run: cmake -B build-mcu -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_C_COMPILER="$CC"
+      - name: Build
+        run: cmake --build build-mcu
+      - name: Test
+        run: ctest --test-dir build-mcu --output-on-failure
+
   cmake-ubuntu:
     runs-on: ubuntu-latest
     steps:
@@ -115,12 +164,38 @@ jobs:
           echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-      - name: Configure
+      - name: Configure (MPU)
         run: cmake -B build -DMEMKIT_EMBEDDED_LINUX=ON -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_C_COMPILER="$CC"
       - name: Build
         run: cmake --build build
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  benchmark-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: llvm
+          key: llvm-21-${{ runner.os }}-v1
+      - name: Install Clang 21 (C++26)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          directory: ${{ github.workspace }}/llvm
+      - name: Export LLVM compiler paths
+        run: |
+          echo "${{ github.workspace }}/llvm/bin" >> "$GITHUB_PATH"
+          echo "CC=${{ github.workspace }}/llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=${{ github.workspace }}/llvm/bin/clang++" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${{ github.workspace }}/llvm/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Run benchmarks
+        run: |
+          make benchmark BENCH_ITERS=50000
 
   macos:
     runs-on: macos-latest
@@ -131,3 +206,5 @@ jobs:
           make all
           make test_c_api_smoke
           make mpu
+      - name: Run benchmarks
+        run: make benchmark BENCH_ITERS=50000

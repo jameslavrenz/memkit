@@ -39,11 +39,18 @@ public:
 
     ~MpscQueue() { clear(); core_.destroy_cells(); }
 
+    [[nodiscard]] static constexpr std::size_t storage_align() noexcept
+    {
+        return alignof(std::atomic<std::size_t>);
+    }
+
+    static_assert(storage_align() >= storage_alignment);
+
     [[nodiscard]] static constexpr std::size_t cell_stride_bytes() noexcept
     {
         return detail::align_up(
             sizeof(std::atomic<std::size_t>) + sizeof(T),
-            alignof(std::atomic<std::size_t>)
+            storage_align()
         );
     }
 
@@ -65,7 +72,7 @@ public:
             return status::invalid;
         }
 
-        if ((reinterpret_cast<std::uintptr_t>(storage) % alignof(std::max_align_t)) != 0u) {
+        if (!detail::is_aligned(reinterpret_cast<std::uintptr_t>(storage), storage_align())) {
             return status::invalid;
         }
 
@@ -87,7 +94,7 @@ public:
         }
 
         void* ptr = nullptr;
-        const status st = arena.allocate(storage_bytes(capacity_pow2), alignof(std::max_align_t), &ptr);
+        const status st = arena.allocate(storage_bytes(capacity_pow2), storage_align(), &ptr);
         if (!ok(st)) {
             return st;
         }

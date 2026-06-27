@@ -5,7 +5,8 @@ Embedded-friendly containers for C and C++ with a single shared implementation p
 ## Quick start
 
 ```bash
-make all              # lib + 31 C++ tests + 2 MCU examples
+make all              # lib + 31 C++ tests + 4 MCU examples
+make benchmark        # timing + size vs hand-rolled C
 make test_c_api_smoke # C API smoke test (MCU)
 make mpu              # MPU examples + extended C API test
 make clean
@@ -105,7 +106,8 @@ Containers can store elements in several ways. The same options exist in C (flag
 The default Makefile target builds the MCU library and C++ tests:
 
 ```bash
-make all              # lib + 31 C++ tests + 2 MCU examples
+make all              # lib + 31 C++ tests + 4 MCU examples
+make benchmark        # timing + size vs hand-rolled C
 make test_cpp         # C++ container tests only
 make test_c_api_smoke # minimal C API smoke test (MCU)
 make mpu              # MPU: example_mpu + example_mpu_c + test_c_api_extended
@@ -642,10 +644,16 @@ tests/
   test_c_api_smoke.c    C API smoke: tier-1 init + arena create (MCU)
   test_c_api_extended.c Tier-1/2 C API + arena *_create (MPU)
 examples/
-  example_mcu.cpp              C++ MCU demo (ring + arena)
+  example_mcu.cpp               C++ ring + arena (basic)
+  example_mcu_c.c               C API ring + queue (tier 1)
   example_embedded_patterns.cpp DMA, MPSC, calibration, bit stream, filtering
-  example_mpu.cpp       C++ MPU demo
-  example_mpu.c         C MPU demo (built as example_mpu_c)
+  example_comm_pipeline.cpp     ByteRing RX + SPSC + TokenBucket pacing
+  example_mpu.cpp               C++ MPU demo
+  example_mpu.c                 C MPU demo (built as example_mpu_c)
+benchmarks/
+  bench_timing.cpp              Push/pop timing vs hand-rolled C
+  hand_rolled/                  Minimal C ring + FIFO for comparison
+  size/                         -Os size comparison binaries
 ```
 
 ## Choosing an API
@@ -668,4 +676,40 @@ You may still `#include <vector>` directly in your own MPU code; memkit just doe
 
 ## CI
 
-GitHub Actions runs MCU (`make all` + smoke), MPU (`make mpu`), MPU+ASan, CMake/`ctest` (MPU), and macOS builds on push/PR to `main`/`master` (see `.github/workflows/ci.yml`).
+GitHub Actions (`.github/workflows/ci.yml`):
+
+| Job | What it runs |
+|-----|----------------|
+| `mcu-ubuntu` | Clang 21 — `make all`, smoke test |
+| `mcu-gcc-ubuntu` | GCC 14 (C++23) — `make all`, smoke test |
+| `mpu-ubuntu` | Clang 21 — `make mpu` |
+| `mpu-asan-ubuntu` | MPU + ASan/UBSan |
+| `cmake-mcu-ubuntu` | CMake MCU — `ctest` |
+| `cmake-ubuntu` | CMake MPU — `ctest` |
+| `benchmark-ubuntu` | `make benchmark` (timing + size) |
+| `macos` | Apple Clang — MCU + MPU + benchmarks |
+
+---
+
+## Benchmarks
+
+Compare memkit against minimal hand-rolled C implementations (`benchmarks/hand_rolled/`):
+
+```bash
+make benchmark              # default 200k push/pop iters per container
+make benchmark BENCH_ITERS=500000
+make benchmark-size         # -Os executable size only
+```
+
+Sample host output (Apple Silicon, Clang):
+
+```
+ring push/pop x50000: memkit … | hand-rolled C … | ratio ~3x
+queue push/pop x50000: memkit … | hand-rolled C … | ratio ~3x
+```
+
+memkit is intentionally slightly slower than a one-off C ring — you trade a few ns/op for type safety, policies, contiguous DMA views, and shared cores. Size benchmarks link the full static library (arena + C API); for firmware, use only the containers you `#include` and LTO/`--gc-sections` to dead-strip.
+
+---
+
+## Examples (MCU)

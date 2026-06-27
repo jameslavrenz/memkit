@@ -47,6 +47,12 @@ target_link_libraries(example_mcu PRIVATE memkit)
 add_executable(example_embedded_patterns examples/example_embedded_patterns.cpp)
 target_link_libraries(example_embedded_patterns PRIVATE memkit)
 
+add_executable(example_comm_pipeline examples/example_comm_pipeline.cpp)
+target_link_libraries(example_comm_pipeline PRIVATE memkit)
+
+add_executable(example_mcu_c examples/example_mcu_c.c)
+target_link_libraries(example_mcu_c PRIVATE memkit)
+
 if(MEMKIT_EMBEDDED_LINUX)
     add_executable(example_mpu examples/example_mpu.cpp)
     target_link_libraries(example_mpu PRIVATE memkit)

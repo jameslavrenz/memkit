@@ -1,5 +1,6 @@
 #include "arena.h"
 
+#include <cstdint>
 #include <cstring>
 
 #if MEMKIT_ALLOW_HEAP
@@ -246,12 +247,15 @@ arena_status_t arena_alloc(
         return ARENA_ERR_INVALID;
     }
 
-    const size_t aligned_offset = arena_align_up(arena->offset_bytes, alignment);
+    const uintptr_t base_addr = reinterpret_cast<uintptr_t>(arena->base);
+    const uintptr_t raw_addr  = base_addr + arena->offset_bytes;
+    const uintptr_t aligned_addr = arena_align_up(raw_addr, alignment);
+    const size_t aligned_offset = aligned_addr - base_addr;
     if (aligned_offset > arena->capacity_bytes || size > arena->capacity_bytes - aligned_offset) {
         return ARENA_ERR_OOM;
     }
 
-    void *const ptr = arena->base + aligned_offset;
+    void *const ptr = reinterpret_cast<void*>(aligned_addr);
     arena->offset_bytes = aligned_offset + size;
     arena->allocation_count++;
 

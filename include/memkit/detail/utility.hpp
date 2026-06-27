@@ -13,6 +13,19 @@ namespace memkit::detail {
     return (value + mask) & ~mask;
 }
 
+[[nodiscard]] constexpr bool is_aligned(std::uintptr_t address, std::size_t alignment) noexcept
+{
+    return (address & (alignment - 1u)) == 0u;
+}
+
+[[nodiscard]] constexpr std::uintptr_t align_up_address(
+    std::uintptr_t address,
+    std::size_t alignment
+) noexcept
+{
+    return align_up(address, alignment);
+}
+
 [[nodiscard]] constexpr bool is_power_of_two(std::size_t value) noexcept
 {
     return value != 0u && (value & (value - 1u)) == 0u;

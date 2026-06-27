@@ -72,13 +72,16 @@ public:
             return status::invalid;
         }
 
-        const std::size_t aligned_offset = detail::align_up(offset_bytes_, alignment);
+        const std::uintptr_t base_addr = reinterpret_cast<std::uintptr_t>(base());
+        const std::uintptr_t raw_addr  = base_addr + offset_bytes_;
+        const std::uintptr_t aligned_addr = detail::align_up_address(raw_addr, alignment);
+        const std::size_t aligned_offset = aligned_addr - base_addr;
         if (aligned_offset > capacity_bytes() ||
             size > capacity_bytes() - aligned_offset) {
             return status::oom;
         }
 
-        *out_ptr = base() + aligned_offset;
+        *out_ptr = reinterpret_cast<void*>(aligned_addr);
         offset_bytes_ = aligned_offset + size;
         ++allocation_count_;
         return status::ok;

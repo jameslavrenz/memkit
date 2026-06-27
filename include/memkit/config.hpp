@@ -2,7 +2,12 @@
 
 #include "../memkit_config.h"
 
+#include <cstddef>
+
 namespace memkit {
+
+/** Minimum alignment for arena blocks that may hold atomics or pointers (Unix 64-bit). */
+inline constexpr std::size_t storage_alignment = 8u;
 
 inline constexpr bool target_mcu = MEMKIT_TARGET_MCU != 0;
 inline constexpr bool target_mpu = MEMKIT_TARGET_MPU != 0;
