@@ -100,10 +100,18 @@ make lib-mcu-c        # Freestanding tier-1 C archive (see below)
 
 ### Manual compile flags
 
+**C++ (MCU or MPU):** add **`-fno-exceptions -fno-rtti`** when compiling against memkit headers (Makefile and CMake set these automatically).
+
 **MCU (C or C++):**
 
 ```text
 -DMEMKIT_MCU=1 -I/path/to/memkit/include
+```
+
+For C++ firmware also:
+
+```text
+-fno-exceptions -fno-rtti
 ```
 
 **MPU:**
@@ -237,7 +245,8 @@ memkit/detail/growable_storage.hpp   # included by ring core; MCU growable paths
 **2. Compile your firmware** (adjust toolchain):
 
 ```bash
-arm-none-eabi-g++ -std=c++26 -Ithird_party/memkit/include -DMEMKIT_MCU=1 -c app.cpp
+arm-none-eabi-g++ -std=c++26 -Ithird_party/memkit/include -DMEMKIT_MCU=1 \
+  -fno-exceptions -fno-rtti -c app.cpp
 ```
 
 **3. Use in application code:**
@@ -267,13 +276,13 @@ You still do **not** need `src/arena.cpp` for C++ `memory::static_arena` — tha
 
 ### Piecemeal C++ checklist
 
-| Need | Vendor headers | Link memkit `.a`? |
-|------|----------------|-------------------|
-| `Ring` / `Queue` with static `init` | container + `detail/*` chain | No |
-| `SpscQueue` / `MpscQueue` | container + core + `std::atomic` | No (may need `-latomic`) |
-| C API `ring_t` from `.c` files | public `*.h` | **Yes** — `libmemkit_mcu_c.a` or full `lib` |
-| `*_create` / heap growable (MPU) | headers + `memory/heap.hpp` | Often yes (`arena.cpp`, bindings) |
-| Tier-2 C (`hashmap_t`, …) | headers | **Yes** — MPU build of library |
+| Need | Vendor headers | Link memkit `.a`? | Compile flags |
+|------|----------------|-------------------|---------------|
+| `Ring` / `Queue` with static `init` | container + `detail/*` chain | No | `-fno-exceptions -fno-rtti` |
+| `SpscQueue` / `MpscQueue` | container + core + `std::atomic` | No (may need `-latomic`) | `-fno-exceptions -fno-rtti` |
+| C API `ring_t` from `.c` files | public `*.h` | **Yes** — `libmemkit_mcu_c.a` or full `lib` | C only; archive built with `-fno-exceptions -fno-rtti` |
+| `*_create` / heap growable (MPU) | headers + `memory/heap.hpp` | Often yes (`arena.cpp`, bindings) | `-fno-exceptions -fno-rtti` |
+| Tier-2 C (`hashmap_t`, …) | headers | **Yes** — MPU build of library | `-fno-exceptions -fno-rtti` |
 
 ### Why the C API is not per-file
 

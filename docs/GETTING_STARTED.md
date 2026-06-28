@@ -224,10 +224,11 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 ### Firmware checklist
 
 1. Add `-DMEMKIT_MCU=1` (or `MEMKIT_MPU=1` + `EMBEDDED_LINUX=1` on Linux).
-2. Link the static `memkit` library (`arena.cpp`, `mmap_backing.cpp`, `c_api/bindings.cpp`).
-3. Include `<memkit/memkit.hpp>` (C++) or `<memkit.h>` / individual `*.h` (C). All C headers include `memkit_config.h` for target flags.
-4. Prefer **static storage** on MCU; use arena when several containers share one buffer.
-5. Always check status (`memkit::ok`, `*_status_ok`).
+2. For C++ firmware, compile with **`-fno-exceptions -fno-rtti`** (set automatically by Makefile/CMake).
+3. Link the static `memkit` library (`arena.cpp`, `mmap_backing.cpp`, `c_api/bindings.cpp`).
+4. Include `<memkit/memkit.hpp>` (C++) or `<memkit.h>` / individual `*.h` (C). All C headers include `memkit_config.h` for target flags.
+5. Prefer **static storage** on MCU; use arena when several containers share one buffer.
+6. Always check status (`memkit::ok`, `*_status_ok`).
 
 ---
 

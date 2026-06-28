@@ -25,9 +25,8 @@ make test-lib-mcu-c-link    # link example_mcu_c with cc only (no -lstdc++)
 Compile flags for the archive (see `MCU_C_CXXFLAGS` in the Makefile):
 
 - `-DMEMKIT_MCU=1`
-- `-fno-exceptions`
-- `-fno-rtti`
-- `-ffreestanding`
+- `-fno-exceptions` and `-fno-rtti` (project-wide on all C++ builds; enforced in Makefile and CMake)
+- `-ffreestanding` (this archive only — freestanding tier-1 C delivery)
 
 Rebuild **per target** (e.g. `arm-none-eabi-g++`, `-mcpu=cortex-m4`, `-mthumb`). One host `.a` is not portable across ABIs.
 
@@ -80,7 +79,8 @@ No `__cxa_*`, `__gxx_*`, or `std::` ABI symbols from libstdc++.
 | Customer uses `#include <memkit/memkit.hpp>` | C++26 + STL **headers** on their compile; separate delivery |
 | Tier-2 C API (hashmap, deque, …) | MPU build (`MEMKIT_MPU=1`), not this MCU C package |
 | `MpscQueue` / `SpscQueue` in customer C++ code | May need `-latomic` on some toolchains |
-| Default `make lib` objects | Dev/host build **may** pull C++ exception personality — use **`lib-mcu-c`** for distribution |
+
+The default **`make lib`** and **`make all`** builds use the same **`-fno-exceptions -fno-rtti`** policy as **`lib-mcu-c`**; the freestanding archive adds **`-ffreestanding`** for pure-C customer link tests.
 
 ## Verifying a third-party `.a`
 

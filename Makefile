@@ -1,6 +1,8 @@
 CXX ?= c++
 CC ?= cc
-CXXFLAGS ?= -std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MCU=1
+# No exceptions or RTTI anywhere in memkit (library, tests, examples, benchmarks).
+MEMKIT_CXX_NO_EH_RTTI = -fno-exceptions -fno-rtti
+CXXFLAGS ?= -std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MCU=1 $(MEMKIT_CXX_NO_EH_RTTI)
 CFLAGS ?= -std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MCU=1
 LDFLAGS ?=
 
@@ -37,16 +39,16 @@ C_API_MPU_TESTS = test_deque_c test_hashmap_c test_btree_c test_pqueue_c test_li
 MPU_CPP_TESTS = test_heap_arena_cpp
 
 MPU_CXXFLAGS = -std=c++26 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
-               -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
+               -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1 $(MEMKIT_CXX_NO_EH_RTTI)
 MPU_CFLAGS = -std=c23 -Wall -Wextra -Wpedantic -Iinclude -DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1 \
              -DMEMKIT_ALLOW_HEAP=1 -DMEMKIT_ALLOW_MMAP=1
 MPU_OBJS = $(BUILD)/mpu/arena.o $(BUILD)/mpu/mmap_backing.o $(BUILD)/mpu/c_api/bindings.o
 
 .PHONY: all test_cpp test_c_api test_c_api_mpu test_c_api_extended test_cpp_mpu mcu mpu clean lib \
-	lib-mcu-c check-lib-mcu-c test-lib-mcu-c-link benchmark benchmark-size
+	lib-mcu-c check-lib check-lib-mcu-c test-lib-mcu-c-link benchmark benchmark-size
 
 # Freestanding MCU C API archive (no libstdc++ at link time for C customers).
-MCU_C_CXXFLAGS = $(CXXFLAGS) -fno-exceptions -fno-rtti -ffreestanding
+MCU_C_CXXFLAGS = $(CXXFLAGS) -ffreestanding
 MCU_C_LIB_DIR = $(BUILD)/mcu_c
 MCU_C_LIB_OBJS = $(MCU_C_LIB_DIR)/arena.o $(MCU_C_LIB_DIR)/c_api/bindings.o
 MCU_C_LIB = $(BUILD)/libmemkit_mcu_c.a
@@ -67,6 +69,15 @@ $(MCU_C_LIB_DIR)/%.o: src/%.cpp | $(MCU_C_LIB_DIR)
 $(MCU_C_LIB_DIR)/c_api/%.o: src/c_api/%.cpp | $(BUILD)
 	mkdir -p $(MCU_C_LIB_DIR)/c_api
 	$(CXX) $(MCU_C_CXXFLAGS) -c -o $@ $<
+
+check-lib: lib
+	@bad=$$(nm -g $(LIB_OBJS) 2>/dev/null | grep -E '__cxa_|__dynamic_cast|typeinfo' || true); \
+	if [ -n "$$bad" ]; then \
+		echo "error: exception/RTTI symbols in $(LIB_OBJS):"; \
+		echo "$$bad"; \
+		exit 1; \
+	fi
+	@echo "check-lib: ok (no exception/RTTI symbols in library objects)"
 
 check-lib-mcu-c: $(MCU_C_LIB)
 	@bad=$$(nm -u $(MCU_C_LIB) 2>/dev/null | grep -E '__cxa_|__gxx_|_ZSt' || true); \

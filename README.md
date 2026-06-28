@@ -120,14 +120,18 @@ Containers can store elements in several ways. The same options exist in C (flag
 
 ## Build
 
+All C++ targets (library, tests, examples, benchmarks) compile with **`-fno-exceptions`** and **`-fno-rtti`**. memkit uses status codes, not exceptions; the flags match embedded firmware practice and are enforced in the Makefile and CMake.
+
 The default Makefile target builds the MCU library and C++ tests:
 
 ```bash
 make all              # lib + 31 C++ tests + 8 C API tests + 4 MCU examples
+make check-lib        # verify library objects have no exception/RTTI symbols
 make benchmark        # timing + size vs hand-rolled C
 make test_cpp         # C++ container tests only
 make test_c_api       # tier-1 C API tests (MCU, 8 binaries)
 make mpu              # MPU: tier-2 C API tests + test_heap_arena_cpp + integration test
+make lib-mcu-c        # freestanding tier-1 C archive for pure-C firmware
 make clean
 ```
 
@@ -142,7 +146,7 @@ ctest --test-dir build
 
 MPU builds also produce `example_mpu` (C++) and `example_mpu_c` (C).
 
-Link against the static library built from `src/arena.cpp`, `src/mmap_backing.cpp`, and `src/c_api/bindings.cpp`. Add `-Iinclude` and `-DMEMKIT_MCU=1` or `-DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1`.
+Link against the static library built from `src/arena.cpp`, `src/mmap_backing.cpp`, and `src/c_api/bindings.cpp`. Add `-Iinclude`, `-DMEMKIT_MCU=1` or `-DMEMKIT_MPU=1 -DEMBEDDED_LINUX=1`, and **`-fno-exceptions -fno-rtti`** when compiling C++ against memkit headers.
 
 ---
 

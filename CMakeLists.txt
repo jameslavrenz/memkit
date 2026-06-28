@@ -9,6 +9,12 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# memkit does not use exceptions or RTTI; enforce project-wide on all C++ targets.
+add_compile_options(
+    "$<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>"
+)
+
 option(MEMKIT_EMBEDDED_LINUX "Build for MPU (embedded Linux): heap + optional mmap" OFF)
 option(MEMKIT_ALLOW_MMAP "Enable mmap-backed arena on MPU" ON)
 option(MEMKIT_USE_STL "MPU only: expose std::vector/string aliases in memkit/stl.hpp" OFF)

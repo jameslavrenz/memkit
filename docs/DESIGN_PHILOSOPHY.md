@@ -157,8 +157,8 @@ On **both** MCU and MPU, via [`memkit/stl.hpp`](../include/memkit/stl.hpp):
 
 ### Compile time vs link time
 
-- **Compile time (C++ + `memkit.hpp`):** You need a C++ toolchain with standard **headers** (`<array>`, `<span>`, …).
-- **Link time:** `std::array` and friends are header-only — they do **not** pull in heap STL. Linking libstdc++/libc++ is mainly driven by **compiled C++ in memkit’s `.a`**, exceptions, iostreams, etc.
+- **Compile time (C++ + `memkit.hpp`):** You need a C++ toolchain with standard **headers** (`<array>`, `<span>`, …). Compile with **`-fno-exceptions -fno-rtti`** (enforced by the Makefile and CMake).
+- **Link time:** `std::array` and friends are header-only — they do **not** pull in heap STL. Linking libstdc++/libc++ is mainly driven by **compiled C++ in memkit’s `.a`**, not by exceptions (memkit does not use them).
 
 ### Pure C firmware path
 
@@ -178,7 +178,7 @@ The C API sees `void *` + `storage_bytes`. In a **C++** translation unit you may
 
 ## Error handling philosophy
 
-- Operations return **`memkit::status`** / `*_status_t` — no exceptions on container paths
+- Operations return **`memkit::status`** / `*_status_t` — no exceptions on container paths (and the project builds with **`-fno-exceptions`**)
 - **`memkit::ok(st)`** / `*_status_ok(st)` at every init and mutating call
 - Failures are **explicit**: `empty`, `full`, `oom`, `unsupported`, `not_found`
 - Debug helpers: `memkit_*_status_string` in [`memkit_helpers.h`](../include/memkit_helpers.h)
