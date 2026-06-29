@@ -198,7 +198,7 @@ include(FetchContent)
 FetchContent_Declare(
     memkit
     GIT_REPOSITORY https://github.com/jameslavrenz/memkit.git
-    GIT_TAG        v0.2.3
+    GIT_TAG        v0.2.4
 )
 FetchContent_MakeAvailable(memkit)
 
