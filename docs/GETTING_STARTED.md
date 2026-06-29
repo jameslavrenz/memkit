@@ -229,6 +229,7 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 4. Include `<memkit/memkit.hpp>` (C++) or `<memkit.h>` / individual `*.h` (C). All C headers include `memkit_config.h` for target flags.
 5. Prefer **static storage** on MCU; use arena when several containers share one buffer.
 6. Always check status (`memkit::ok`, `*_status_ok`).
+7. Size buffers yourself — use `MEMKIT_ELEM_STORAGE` or equivalent so capacity is explicit; see [Design philosophy — bounds and sizing](DESIGN_PHILOSOPHY.md#bounds-and-sizing-what-memkit-checks-vs-what-you-own).
 
 ---
 

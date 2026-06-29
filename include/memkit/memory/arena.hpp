@@ -2,6 +2,7 @@
 
 #include "../config.hpp"
 #include "../detail/utility.hpp"
+#include "../status.hpp"
 #include "fixed_buffer.hpp"
 
 #include <cstddef>
@@ -44,6 +45,9 @@ public:
 
     [[nodiscard]] std::size_t remaining_bytes() const noexcept
     {
+        if (offset_bytes_ > capacity_bytes()) {
+            return 0u;
+        }
         return capacity_bytes() - offset_bytes_;
     }
 
@@ -71,18 +75,27 @@ public:
         if (size == 0u || alignment == 0u || !detail::is_power_of_two(alignment)) {
             return status::invalid;
         }
-
-        const std::uintptr_t base_addr = reinterpret_cast<std::uintptr_t>(base());
-        const std::uintptr_t raw_addr  = base_addr + offset_bytes_;
-        const std::uintptr_t aligned_addr = detail::align_up_address(raw_addr, alignment);
-        const std::size_t aligned_offset = aligned_addr - base_addr;
-        if (aligned_offset > capacity_bytes() ||
-            size > capacity_bytes() - aligned_offset) {
+        if (offset_bytes_ > capacity_bytes()) {
             return status::oom;
         }
 
-        *out_ptr = reinterpret_cast<void*>(aligned_addr);
-        offset_bytes_ = aligned_offset + size;
+        const std::size_t padding = detail::alignment_padding(offset_bytes_, alignment);
+        if (detail::add_would_overflow(offset_bytes_, padding)) {
+            return status::oom;
+        }
+        const std::size_t aligned_offset = offset_bytes_ + padding;
+
+        if (detail::add_would_overflow(aligned_offset, size)) {
+            return status::oom;
+        }
+        const std::size_t new_offset = aligned_offset + size;
+
+        if (new_offset > capacity_bytes()) {
+            return status::oom;
+        }
+
+        *out_ptr = base() + aligned_offset;
+        offset_bytes_ = new_offset;
         ++allocation_count_;
         return status::ok;
     }
@@ -94,7 +107,7 @@ public:
         void** out_ptr
     )
     {
-        if (count != 0u && size > SIZE_MAX / count) {
+        if (count != 0u && detail::mul_would_overflow(count, size)) {
             return status::invalid;
         }
 

@@ -107,7 +107,7 @@ set(MEMKIT_CPP_TESTS
     test_timer_wheel_cpp test_double_buffer_cpp test_mpsc_queue_cpp test_enum_map_cpp
     test_ring_log_cpp test_sparse_set_cpp test_small_buffer_cpp test_fixed_variant_cpp
     test_token_bucket_cpp test_fixed_iovec_cpp test_lookup_table_cpp
-    test_bit_stream_cpp test_running_stats_cpp
+    test_bit_stream_cpp test_running_stats_cpp test_arena_cpp
 )
 
 foreach(test_name IN LISTS MEMKIT_CPP_TESTS)

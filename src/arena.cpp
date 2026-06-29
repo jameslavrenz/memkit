@@ -1,5 +1,7 @@
 #include "arena.h"
 
+#include <memkit/detail/utility.hpp>
+
 #include <cstdint>
 #include <cstring>
 
@@ -13,12 +15,6 @@
 #include <sys/mman.h>
 #endif
 #endif
-
-static size_t arena_align_up(size_t value, size_t alignment)
-{
-    const size_t mask = alignment - 1u;
-    return (value + mask) & ~mask;
-}
 
 static bool arena_ptr_is_valid(const arena_t *arena)
 {
@@ -246,17 +242,27 @@ arena_status_t arena_alloc(
     if (size == 0u || alignment == 0u || (alignment & (alignment - 1u)) != 0u) {
         return ARENA_ERR_INVALID;
     }
-
-    const uintptr_t base_addr = reinterpret_cast<uintptr_t>(arena->base);
-    const uintptr_t raw_addr  = base_addr + arena->offset_bytes;
-    const uintptr_t aligned_addr = arena_align_up(raw_addr, alignment);
-    const size_t aligned_offset = aligned_addr - base_addr;
-    if (aligned_offset > arena->capacity_bytes || size > arena->capacity_bytes - aligned_offset) {
+    if (arena->offset_bytes > arena->capacity_bytes) {
         return ARENA_ERR_OOM;
     }
 
-    void *const ptr = reinterpret_cast<void*>(aligned_addr);
-    arena->offset_bytes = aligned_offset + size;
+    const size_t padding = memkit::detail::alignment_padding(arena->offset_bytes, alignment);
+    if (memkit::detail::add_would_overflow(arena->offset_bytes, padding)) {
+        return ARENA_ERR_OOM;
+    }
+    const size_t aligned_offset = arena->offset_bytes + padding;
+
+    if (memkit::detail::add_would_overflow(aligned_offset, size)) {
+        return ARENA_ERR_OOM;
+    }
+    const size_t new_offset = aligned_offset + size;
+
+    if (new_offset > arena->capacity_bytes) {
+        return ARENA_ERR_OOM;
+    }
+
+    void *const ptr = arena->base + aligned_offset;
+    arena->offset_bytes = new_offset;
     arena->allocation_count++;
 
     *out_ptr = ptr;
@@ -271,7 +277,7 @@ arena_status_t arena_calloc(
     void **out_ptr
 )
 {
-    if (count != 0u && size > SIZE_MAX / count) {
+    if (count != 0u && memkit::detail::mul_would_overflow(count, size)) {
         return ARENA_ERR_INVALID;
     }
 
@@ -292,6 +298,9 @@ arena_status_t arena_stats(const arena_t *arena, arena_stats_t *out_stats)
     }
     if (!arena_ptr_is_valid(arena)) {
         return ARENA_ERR_NULL;
+    }
+    if (arena->offset_bytes > arena->capacity_bytes) {
+        return ARENA_ERR_INVALID;
     }
 
     *out_stats = arena_stats_t{

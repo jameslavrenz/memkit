@@ -122,6 +122,24 @@ On MPU, arena backing can be a **caller fixed buffer**, **heap** (`heap_storage`
 
 Vector, queue, deque, pqueue, hashmap can **double capacity** when full. On MPU, growth may use heap if no arena was supplied. On MCU, growable + heap paths are disabled — use fixed capacity or arena-backed init with a known upper bound.
 
+### Bounds and sizing (what memkit checks vs what you own)
+
+memkit is built for firmware teams who **choose capacity up front** and **check status codes** — not for treating every init as untrusted input.
+
+**The library guarantees:**
+
+- Containers do not silently grow past **fixed capacity** on MCU; push/pop when full or empty returns an explicit status.
+- **Arena** bump allocation validates offset, alignment padding, and remaining space (see `arena_alloc` / C++ `memory::arena::allocate`).
+- Obvious bad config is rejected (`capacity == 0`, null storage, invalid alignment).
+
+**You own:**
+
+- Picking **element count and buffer sizes** that fit your product (prefer `MEMKIT_ELEM_STORAGE`, `stl::array<T, N>`, or documented `storage_bytes`).
+- Ensuring **`elem_size × capacity`** (and your arena backing size) is a sane, representable size for your platform — memkit does not exhaustively guard every pathological `size_t` multiply on every init path; static sizing makes this a compile-time non-issue.
+- Handling **`full`**, **`oom`**, and **`invalid`** at call sites.
+
+This is intentional: less defensive wrapping around absurd sizes, more explicit contracts for embedded use.
+
 ---
 
 ## C API tiers
@@ -214,10 +232,11 @@ C opaque blobs (`ring_t.bytes[MEMKIT_RING_OBJ_BYTES]`) hide layout; sizes are ch
 
 1. Pick **MCU or MPU** from your platform, not from container preference alone.
 2. Prefer **fixed buffer** until you need arena sharing or MPU growable.
-3. **C firmware** → tier-1 C API + optional `libmemkit_mcu_c.a`.
-4. **C++ firmware on MCU** → `memkit.hpp` + static/`std::array`; all 32 utilities available.
-5. **Heavy maps/lists in C on MCU** → not in tier-1 C; use C++ API or MPU build.
-6. Always check **status**; use helpers and tests as templates.
+3. **Size storage explicitly** — memkit enforces capacity at runtime but expects sane init sizes from you (see [bounds and sizing](#bounds-and-sizing-what-memkit-checks-vs-what-you-own)).
+4. **C firmware** → tier-1 C API + optional `libmemkit_mcu_c.a`.
+5. **C++ firmware on MCU** → `memkit.hpp` + static/`std::array`; all 32 utilities available.
+6. **Heavy maps/lists in C on MCU** → not in tier-1 C; use C++ API or MPU build.
+7. Always check **status**; use helpers and tests as templates.
 
 ---
 

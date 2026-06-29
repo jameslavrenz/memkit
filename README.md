@@ -7,7 +7,7 @@ Embedded-friendly containers for C and C++ with a single shared implementation p
 ## Quick start
 
 ```bash
-make all              # lib + 31 C++ tests + 8 C API tests + 4 MCU examples
+make all              # lib + 32 C++ tests + 8 C API tests + 4 MCU examples
 make benchmark        # timing + size vs hand-rolled C
 make test_c_api       # tier-1 C API tests (MCU)
 make lib-mcu-c        # freestanding libmemkit_mcu_c.a (C customers, no libstdc++)
@@ -71,7 +71,7 @@ The public API is **feature-complete** for embedded use on Unix (macOS and Linux
 | C arena | 1 | yes | yes | Bump allocator; mmap/heap create on MPU |
 | C++-only helpers | 18 | yes | yes | No C bindings (see [cheat sheet](#container-cheat-sheet)) |
 
-**Tests:** 31 C++ test binaries cover all 32 C++ containers (`Stack` and `Queue` share `test_stack_queue_cpp.cpp`). C API: **8 tier-1 tests** on MCU (`test_arena_c`, `test_ring_c`, … — one per header), **7 tier-2 tests** on MPU, plus **`test_c_api_extended.c`** (shared `arena_create` + all `*_create` helpers on one arena). MPU also runs **`test_heap_arena_cpp`** (`heap_arena` + arena-backed ring).
+**Tests:** 32 C++ test binaries (including `test_arena_cpp` for arena overflow checks) cover all 32 C++ containers (`Stack` and `Queue` share `test_stack_queue_cpp.cpp`). C API: **8 tier-1 tests** on MCU (`test_arena_c`, `test_ring_c`, … — one per header), **7 tier-2 tests** on MPU, plus **`test_c_api_extended.c`** (shared `arena_create` + all `*_create` helpers on one arena). MPU also runs **`test_heap_arena_cpp`** (`heap_arena` + arena-backed ring).
 
 Pick the API that fits your project:
 
@@ -125,7 +125,7 @@ All C++ targets (library, tests, examples, benchmarks) compile with **`-fno-exce
 The default Makefile target builds the MCU library and C++ tests:
 
 ```bash
-make all              # lib + 31 C++ tests + 8 C API tests + 4 MCU examples
+make all              # lib + 32 C++ tests + 8 C API tests + 4 MCU examples
 make check-lib        # verify library objects have no exception/RTTI symbols
 make benchmark        # timing + size vs hand-rolled C
 make test_cpp         # C++ container tests only

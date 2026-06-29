@@ -31,6 +31,24 @@ namespace memkit::detail {
     return value != 0u && (value & (value - 1u)) == 0u;
 }
 
+[[nodiscard]] constexpr bool add_would_overflow(std::size_t a, std::size_t b) noexcept
+{
+    return b > SIZE_MAX - a;
+}
+
+[[nodiscard]] constexpr bool mul_would_overflow(std::size_t a, std::size_t b) noexcept
+{
+    return a != 0u && b > SIZE_MAX / a;
+}
+
+[[nodiscard]] constexpr std::size_t alignment_padding(
+    std::size_t offset,
+    std::size_t alignment
+) noexcept
+{
+    return (alignment - (offset & (alignment - 1u))) & (alignment - 1u);
+}
+
 [[nodiscard]] constexpr std::size_t bytes_alignment(std::size_t elem_size) noexcept
 {
     if (elem_size == 0u) {
