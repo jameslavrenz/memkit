@@ -2,7 +2,7 @@
 
 Embedded-friendly containers for C and C++ with a single shared implementation per container family. C++ templates are the primary API; the C API is a thin, type-erased layer over the same cores.
 
-**New here?** [Getting started](docs/GETTING_STARTED.md) · [Adoption guide](docs/ADOPTION_GUIDE.md) · [C API reference](docs/C_API_REFERENCE.md) · [C++ API reference](docs/CXX_API_REFERENCE.md) · [Design philosophy](docs/DESIGN_PHILOSOPHY.md) · [Which container?](docs/CONTAINER_GUIDE.md) · [Bare-metal C lib](docs/DISTRIBUTING_MCU_C.md)
+**New here?** [Getting started](docs/GETTING_STARTED.md) · [Adoption guide](docs/ADOPTION_GUIDE.md) · [Concurrency & RTOS](docs/CONCURRENCY.md) · [C API reference](docs/C_API_REFERENCE.md) · [C++ API reference](docs/CXX_API_REFERENCE.md) · [Design philosophy](docs/DESIGN_PHILOSOPHY.md) · [Which container?](docs/CONTAINER_GUIDE.md) · [Bare-metal C lib](docs/DISTRIBUTING_MCU_C.md)
 
 ## Quick start
 
@@ -185,11 +185,11 @@ All types live in namespace `memkit`. Operations return `memkit::status` unless 
 | `SmallString<N>` | `small_string.hpp` | Fixed string | `assign`, `append`, `clear`, `size`, `empty`, `view`, `c_str`, `operator==` |
 | `ByteRing` | `byte_ring.hpp` | Byte I/O ring | `init`, `init_from_arena`, `push_bytes`, `readable_contiguous`, `writable_contiguous`, `commit_read`/`write` |
 | `IntrusiveListHead` | `intrusive_list.hpp` | Intrusive lists | `push_back`/`front`, `erase`, `splice`, `is_linked`; hooks: `IntrusiveListHook`, `IntrusiveDListHook` |
-| `SpscQueue<T>` | `spsc_queue.hpp` | Lock-free SPSC | `init`, `init_from_arena`, `storage_bytes`, `push`, `pop`, `empty`, `full`, `size` |
+| `SpscQueue<T>` | `spsc_queue.hpp` | Lock-free SPSC (1 prod / 1 cons) | See [CONCURRENCY.md](docs/CONCURRENCY.md) — not the same as `Queue` |
 | `FlatMap<K,V>` | `flat_map.hpp` | Sorted flat map | `init`, `init_from_arena`, `put`, `get`, `remove`, `contains`, `find`, `foreach` |
 | `TimerWheel<N>` | `timer_wheel.hpp` | Timing wheel | `init`, `schedule`, `cancel`, `tick`; nodes: `TimerWheelNode` |
-| `DoubleBuffer<T>` | `double_buffer.hpp` | Ping-pong buffer | `init`, `init_from_arena`, `write_span`, `publish`, `read_span` |
-| `MpscQueue<T>` | `mpsc_queue.hpp` | Bounded MPSC | `init`, `init_from_arena`, `storage_bytes`, `storage_align`, `push`, `pop`, `empty`, `full`, `size` |
+| `DoubleBuffer<T>` | `double_buffer.hpp` | Ping-pong buffer (1 prod / 1 cons) | `write_span`, `publish`, `read_span` — see [CONCURRENCY.md](docs/CONCURRENCY.md) |
+| `MpscQueue<T>` | `mpsc_queue.hpp` | Lock-free MPSC (N prod / 1 cons) | See [CONCURRENCY.md](docs/CONCURRENCY.md) — aligned storage |
 | `EnumMap<Enum,V,N>` | `enum_map.hpp` | Enum map | `init`, `put`, `get`, `at`, `contains`, `clear`, `foreach` |
 | `RingLog<Record>` | `ring_log.hpp` | Flight recorder | `init`, `init_from_arena`, `append`, `clear`, `size`, `capacity`, `foreach` |
 | `SparseSet` | `sparse_set.hpp` | Active ID set | `init`, `init_from_arena`, `insert`, `remove`, `contains`, `clear`, dense `operator[]` |
@@ -267,12 +267,12 @@ struct work_item {
 memkit::IntrusiveListHead pending;
 pending.push_back(item.hook);
 
-// SPSC queue — ISR-safe single producer / single consumer (power-of-2 capacity)
+// SPSC queue — one producer, one consumer (e.g. ISR push, task pop). Not the same as Queue.
 memkit::stl::array<std::byte, memkit::SpscQueue<int>::storage_bytes(16)> qbuf{};
 memkit::SpscQueue<int> events;
 events.init(qbuf, 16u);
-events.push(42);  // producer side
-int v; events.pop(v);  // consumer side
+events.push(42);  // producer side only
+int v; events.pop(v);  // consumer side only
 
 // FlatMap — sorted array for small static maps (O(log n) lookup)
 memkit::stl::array<std::byte, memkit::FlatMap<int,int>::storage_bytes(8)> mapbuf{};
@@ -354,12 +354,12 @@ Most firmware workflows combine a few memkit types rather than needing new conta
 
 | Pattern | Building blocks | Notes |
 |---------|-----------------|-------|
-| **ISR → main handoff** | `SpscQueue<T>` (one ISR) or `MpscQueue<T>` (several ISRs) | Consumer runs only on main thread |
+| **ISR → main handoff** | `SpscQueue<T>` (one ISR) or `MpscQueue<T>` (several ISRs) | Lock-free; fixed producer/consumer roles — see [CONCURRENCY.md](docs/CONCURRENCY.md) |
 | **Deferred work / tasks** | `IntrusiveListHead` + `TimerWheel<N>` | Embed hooks in your structs; schedule callbacks |
 | **Command dispatch** | `EnumMap<cmd, handler>` or `FlatMap<id, fn>` | O(1) enum table for small sets |
 | **Active entity / timer set** | `SparseSet` or `HandlePool<T>` + `Bitset` | Dense iteration over live IDs |
 | **Protocol payload** | `SmallBuffer<N>` + `BitReader` / `BitWriter` | Length-prefixed binary + packed fields |
-| **DMA / ADC pipeline** | `DoubleBuffer<T>` or `FixedIoVec<N>` | Producer fills, `publish()`, consumer reads stable slot |
+| **DMA / ADC pipeline** | `DoubleBuffer<T>` or `FixedIoVec<N>` | Producer fills, `publish()`, consumer reads stable slot — not a message queue |
 | **Sensor filtering** | `MovingAverage<T,N>` or `WindowStats<T,N>` | Fixed window; no heap |
 | **Calibration** | `LookupTable<X,Y>` over flash arrays | Interpolate ADC → engineering units |
 | **Rate-limited I/O** | `TokenBucket` + `ByteRing` / UART driver | Call `refill()` from tick, `try_consume()` before TX |
@@ -674,11 +674,11 @@ ring_commit_write(&ring, n);
 | SmallString | `SmallString<N>` | — | C++ only | Fixed string, no heap |
 | ByteRing | `ByteRing` | — | C++ only | Byte I/O ring (`Ring<uint8_t>` semantics) |
 | IntrusiveList | `IntrusiveListHead` | — | C++ only | Intrusive list heads |
-| SpscQueue | `SpscQueue<T>` | — | C++ only | Lock-free SPSC queue |
+| SpscQueue | `SpscQueue<T>` | — | C++ only | Lock-free 1P1C — not `Queue` / `queue_t` |
 | FlatMap | `FlatMap<K,V>` | — | C++ only | Sorted flat array map |
 | TimerWheel | `TimerWheel<N>` | — | C++ only | Hashed timing wheel |
-| DoubleBuffer | `DoubleBuffer<T>` | — | C++ only | Ping-pong DMA buffer |
-| MpscQueue | `MpscQueue<T>` | — | C++ only | Multi-producer single-consumer queue |
+| DoubleBuffer | `DoubleBuffer<T>` | — | C++ only | Ping-pong block handoff (1P1C) |
+| MpscQueue | `MpscQueue<T>` | — | C++ only | Lock-free MPSC — one consumer only |
 | EnumMap | `EnumMap<Enum,V,N>` | — | C++ only | Enum-keyed array map |
 | RingLog | `RingLog<Record>` | — | C++ only | Overwriting circular log |
 | SparseSet | `SparseSet` | — | C++ only | Sparse set for active IDs |

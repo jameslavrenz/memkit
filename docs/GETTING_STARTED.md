@@ -12,6 +12,7 @@ This guide walks through the **80% path** most firmware projects need: static st
 | C++ firmware, bare-metal | [C++ on MCU](#c-on-mcu) |
 | Embedded Linux (MPU) | [MPU heap / mmap](#mpu-embedded-linux) |
 | Choosing a container | [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) |
+| RTOS, ISR, or multi-task sharing | [CONCURRENCY.md](CONCURRENCY.md) |
 
 ---
 
@@ -230,6 +231,7 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 5. Prefer **static storage** on MCU; use arena when several containers share one buffer.
 6. Always check status (`memkit::ok`, `*_status_ok`).
 7. Size buffers yourself — use `MEMKIT_ELEM_STORAGE` or equivalent so capacity is explicit; see [Design philosophy — bounds and sizing](DESIGN_PHILOSOPHY.md#bounds-and-sizing-what-memkit-checks-vs-what-you-own).
+8. **RTOS / ISR:** default is **single-context** per container; C `queue_t` is **not** ISR-safe. For handoff use C++ `SpscQueue` / `MpscQueue` / `DoubleBuffer` or your RTOS lock — see [CONCURRENCY.md](CONCURRENCY.md).
 
 ---
 
@@ -238,6 +240,8 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 | Mistake | Fix |
 |---------|-----|
 | Using `Ring` when you want strict FIFO | Use `Queue` — ring can overwrite; queue returns `FULL` |
+| Using `queue_t` / `Queue` from an ISR | Not safe — use `SpscQueue` / `MpscQueue` (C++) or RTOS queue; see [CONCURRENCY.md](CONCURRENCY.md) |
+| Two tasks sharing one container without a lock | Single owner per instance, or wrap with your RTOS mutex |
 | Forgetting `ring_deinit` / `queue_deinit` | Call deinit for `*_init`; `*_destroy` for `*_create` |
 | `uint8_t` storage with strict alignment types | Use `MEMKIT_ELEM_STORAGE(type, cap, name)` |
 | Tier-2 C API on MCU | Use C++ headers or stick to tier 1 in C |
@@ -247,6 +251,7 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 
 ## Where to go next
 
+- [CONCURRENCY.md](CONCURRENCY.md) — RTOS/ISR contract, lock-free trio, FreeRTOS patterns
 - [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — STL mapping, build flags, ownership, piecemeal / prebuilt `.a` integration
 - [C_API_REFERENCE.md](C_API_REFERENCE.md) — C config fields, flags, and function parameters
 - [CXX_API_REFERENCE.md](CXX_API_REFERENCE.md) — C++ init overloads, policies, methods

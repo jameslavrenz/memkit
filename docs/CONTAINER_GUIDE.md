@@ -2,12 +2,14 @@
 
 memkit ships **32 C++ utilities** and **14 C containers**. This guide picks by **what you need to do**, not by class name.
 
+**RTOS / ISR?** Most types are **single-context**; only three C++ types are lock-free handoff queues/buffers. Read [CONCURRENCY.md](CONCURRENCY.md) before using containers from interrupts or multiple tasks.
+
 ## Quick picker
 
 | I need to… | Container | C API | Notes |
 |------------|-----------|-------|-------|
-| Buffer sensor samples FIFO, fixed size | `Queue` | `queue_t` | Fails when full; strict FIFO |
-| Keep a circular log, drop oldest when full | `Ring` + overwrite policy | `ring_t` | See `RING_FLAG_OVERWRITE_ON_FULL` |
+| Buffer sensor samples FIFO, fixed size | `Queue` | `queue_t` | **Single task**; fails when full; not ISR-safe |
+| Keep a circular log, drop oldest when full | `Ring` + overwrite policy | `ring_t` | **Single task**; see `RING_FLAG_OVERWRITE_ON_FULL` |
 | Push/pop both ends | `Deque` | `deque_t` | MPU / C++ |
 | LIFO undo / call stack | `Stack` | `cstack_t` | Same core as vector |
 | Growable array, indexed access | `Vector` | `vector_t` | Optional growable on MPU |
@@ -21,11 +23,11 @@ memkit ships **32 C++ utilities** and **14 C containers**. This guide picks by *
 | Linked list, both directions | `DList` | `dlist_t` | MPU / C++ |
 | Cache with LRU eviction | `LruCache` | `lrucache_t` | MPU / C++ |
 | Raw bytes / UART / DMA chunks | `ByteRing` | — | C++ only |
-| ISR → main, one producer & consumer | `SpscQueue` | — | Lock-free; power-of-2 size |
-| Multiple ISRs → one consumer | `MpscQueue` | — | Bounded; needs aligned storage |
+| ISR → main, one producer & consumer | `SpscQueue` | — | Lock-free; power-of-2; **C++ only** |
+| Multiple ISRs → one consumer | `MpscQueue` | — | Lock-free MPSC; **one** consumer; C++ only |
+| Ping-pong DMA / double buffer | `DoubleBuffer` | — | Block handoff via `publish()`; C++ only |
 | Small sorted map (≤ few dozen keys) | `FlatMap` | — | C++ only; cache-friendly |
 | Enum → handler table | `EnumMap` | — | C++ only |
-| Ping-pong DMA / double buffer | `DoubleBuffer` | — | C++ only |
 | Timers / ticks in the future | `TimerWheel` | — | C++ only; intrusive nodes |
 | Fixed string, no heap | `SmallString` | — | C++ only |
 | Binary payload / protocol frame | `SmallBuffer` | — | C++ only |
@@ -35,28 +37,48 @@ memkit ships **32 C++ utilities** and **14 C containers**. This guide picks by *
 
 ## Ring vs Queue vs Deque vs SPSC vs MPSC
 
-These are the most confused names. All can hold a sequence of elements, but semantics differ:
+These names are easy to confuse. **`Queue` and `queue_t` are not ISR-safe** — the word “queue” describes FIFO **semantics**, not cross-context safety. For interrupt handoff use the [lock-free trio](CONCURRENCY.md#the-lock-free-trio-c-only) (`SpscQueue`, `MpscQueue`, `DoubleBuffer`) or your RTOS queue.
+
+### Semantics
 
 ```
 Queue     push back ──► [ oldest … newest ] ──► pop front
           Full → push fails (or growable on MPU)
+          Single task / mutex — NOT for ISR
 
 Ring      push back ──► [ … ] ──► optional overwrite oldest when full
-          Good for flight logs, telemetry rings
+          Flight logs, telemetry — single task / mutex
 
-Deque     push/pop at both ends
+Deque     push/pop at both ends — single task / mutex
 
-SpscQueue one producer, one consumer, lock-free (ISR-safe with correct pairing)
+SpscQueue one producer, one consumer, lock-free (C++ only)
 
-MpscQueue many producers, one consumer, lock-free (bounded)
+MpscQueue many producers, one consumer, lock-free (C++ only)
+
+DoubleBuffer  one producer fills a slot, publish(), one consumer reads
+              Block snapshot — not a message queue (C++ only)
 ```
 
-**Rule of thumb**
+### Comparison table
 
-- **Main loop only, strict FIFO** → `Queue`
-- **Fixed log, OK to lose oldest** → `Ring` with overwrite
-- **Both ends** → `Deque`
-- **Interrupt + thread** → `SpscQueue` or `MpscQueue` (C++ only today)
+| | **`Queue` / `queue_t`** | **`Ring` / `ring_t`** | **`SpscQueue`** | **`MpscQueue`** | **`DoubleBuffer`** |
+|--|-------------------------|----------------------|-----------------|-----------------|---------------------|
+| **Concurrent?** | No | No | Yes (1 prod, 1 cons) | Yes (N prod, 1 cons) | Yes (1 prod, 1 cons) |
+| **C API** | Yes | Yes | No | No | No |
+| **Carries** | FIFO items | FIFO / log items | FIFO messages | FIFO messages | One block per publish |
+| **When full** | `FULL` (or grow MPU) | `FULL` or overwrite | `FULL` / policy | `FULL` after spins | Finish slot, then publish |
+
+### Rule of thumb
+
+- **One task, strict FIFO** → `Queue` / `queue_t`
+- **One task, telemetry OK to drop oldest** → `Ring` with overwrite
+- **Both ends, one task** → `Deque`
+- **One ISR (or task) → one task** → `SpscQueue`
+- **Several ISRs → one task** → `MpscQueue`
+- **DMA / ADC frame ping-pong** → `DoubleBuffer`
+- **Two tasks share a FIFO** → `Queue` + **your RTOS mutex** (see [CONCURRENCY.md](CONCURRENCY.md))
+
+Full contract and FreeRTOS examples: [CONCURRENCY.md](CONCURRENCY.md).
 
 ---
 
@@ -148,7 +170,7 @@ See: `tests/test_hashmap_c.c`.
 
 | Category | Types |
 |----------|-------|
-| Concurrency | `SpscQueue`, `MpscQueue` |
+| Concurrency / handoff | `SpscQueue`, `MpscQueue`, `DoubleBuffer` — see [CONCURRENCY.md](CONCURRENCY.md) |
 | I/O & bytes | `ByteRing`, `FixedIoVec`, `BitReader`, `BitWriter` |
 | Small helpers | `SmallString`, `SmallBuffer`, `FixedVariant` |
 | Maps & tables | `FlatMap`, `EnumMap`, `LookupTable`, `SparseSet` |
@@ -157,3 +179,11 @@ See: `tests/test_hashmap_c.c`.
 | Intrusive | `IntrusiveListHead`, hooks |
 
 Full list: [README container cheat sheet](../README.md#container-cheat-sheet).
+
+---
+
+## Related docs
+
+- [CONCURRENCY.md](CONCURRENCY.md) — thread/ISR contract, lock-free trio, FreeRTOS patterns
+- [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) — memory models, MCU vs MPU
+- [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — build flags, `-latomic`

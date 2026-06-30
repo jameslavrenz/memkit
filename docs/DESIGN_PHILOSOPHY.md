@@ -142,6 +142,24 @@ This is intentional: less defensive wrapping around absurd sizes, more explicit 
 
 ---
 
+## Concurrency and RTOS (single-context by default)
+
+memkit is **RTOS-agnostic** and **does not embed locks**. Almost every container assumes **one owning context** (task, main loop, or code you serialize). If two FreeRTOS tasks, or an ISR and a task, share a `queue_t` or `Queue` without your mutex, behavior is undefined.
+
+**Exceptions (C++ only):** three **lock-free handoff** types with fixed roles:
+
+| Type | Pattern |
+|------|---------|
+| `SpscQueue` | One producer, one consumer |
+| `MpscQueue` | Many producers, **one** consumer |
+| `DoubleBuffer` | One producer, one consumer; block snapshot via `publish()` |
+
+These are **not** wrapped in RTOS APIs — you still respect who calls `push` vs `pop`. C `queue_t` / `ring_t` are **not** ISR-safe despite the names.
+
+**You own:** mutexes, critical sections, task ownership, and choosing `Queue` vs `SpscQueue` vs RTOS queues. See [CONCURRENCY.md](CONCURRENCY.md) for the full contract, queue naming pitfalls, and FreeRTOS integration patterns.
+
+---
+
 ## C API tiers
 
 | Tier | Containers | MCU C | MPU C |
@@ -223,6 +241,8 @@ C opaque blobs (`ring_t.bytes[MEMKIT_RING_OBJ_BYTES]`) hide layout; sizes are ch
 - **Not** a host desktop framework — MPU support targets embedded Linux, not “any OS”
 - **Not** exception-driven — status codes throughout
 - **Not** implicitly growable on MCU — capacity is a contract
+- **Not** thread-safe by default — single-context containers; three C++ lock-free handoff types only (see [CONCURRENCY.md](CONCURRENCY.md))
+- **Not** RTOS-coupled — no built-in mutex/semaphore layer; integrators own cross-task safety
 - **Not** one-size API surface in C — tier 1 stays small; full C++ surface lives in headers
 - **Not** Windows-ready yet — see README future work
 
@@ -236,12 +256,14 @@ C opaque blobs (`ring_t.bytes[MEMKIT_RING_OBJ_BYTES]`) hide layout; sizes are ch
 4. **C firmware** → tier-1 C API + optional `libmemkit_mcu_c.a`.
 5. **C++ firmware on MCU** → `memkit.hpp` + static/`std::array`; all 32 utilities available.
 6. **Heavy maps/lists in C on MCU** → not in tier-1 C; use C++ API or MPU build.
-7. Always check **status**; use helpers and tests as templates.
+7. **RTOS / ISR sharing** → read [CONCURRENCY.md](CONCURRENCY.md); default is single-context; use `SpscQueue` / `MpscQueue` / `DoubleBuffer` for handoff, or your mutex.
+8. Always check **status**; use helpers and tests as templates.
 
 ---
 
 ## Related docs
 
+- [CONCURRENCY.md](CONCURRENCY.md) — thread/ISR contract, lock-free trio, FreeRTOS patterns
 - [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — STL vs memkit containers, build flags, ownership, piecemeal integration
 - [GETTING_STARTED.md](GETTING_STARTED.md) — hands-on paths
 - [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) — which container for which job

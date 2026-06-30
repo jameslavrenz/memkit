@@ -2,6 +2,8 @@
 
 Parameter-level reference for the memkit C23 API. For tutorials see [GETTING_STARTED.md](GETTING_STARTED.md); for picking a container see [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md).
 
+**Concurrency:** the C API is **single-context** by default. `queue_t` and `ring_t` are **not** ISR-safe. For cross-context handoff use C++ `SpscQueue` / `MpscQueue` / `DoubleBuffer` or your RTOS primitives — see [CONCURRENCY.md](CONCURRENCY.md).
+
 Headers are authoritative; this document explains **meaning** of shared fields and functions. Tier-1 containers work on MCU; tier-2 require MPU (`MEMKIT_MPU=1`).
 
 ---

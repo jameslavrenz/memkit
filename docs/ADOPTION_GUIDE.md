@@ -63,14 +63,18 @@ These are aimed at **embedded** workflows — ISRs, DMA, rate limits, flight rec
 
 | Category | Types | Typical use |
 |----------|-------|-------------|
-| **Lock-free queues** | `SpscQueue`, `MpscQueue` | ISR → main handoff |
+| **Lock-free handoff (C++ only)** | `SpscQueue`, `MpscQueue`, `DoubleBuffer` | ISR ↔ task, DMA ping-pong — **not** general thread-safe containers |
 | **Intrusive structures** | `IntrusiveListHead`, hooks | Zero-allocation linked lists in your structs |
 | **Timing** | `TimerWheel`, `TokenBucket` | Tick scheduling, rate limiting |
-| **DMA / signal** | `DoubleBuffer`, `FixedIoVec` | Ping-pong buffers, scatter/gather |
+| **DMA / signal** | `FixedIoVec` (+ `DoubleBuffer` above) | Scatter/gather I/O |
 | **Maps / tables** | `EnumMap`, `LookupTable`, `SparseSet` | Dispatch tables, calibration, active ID sets |
 | **Logging / payloads** | `RingLog`, `SmallBuffer`, `FixedVariant` | Flight recorder, binary frames, tagged messages |
 | **Bit packing** | `BitReader`, `BitWriter` | Protocol fields |
 | **Filtering** | `MovingAverage`, `WindowStats` | Fixed-window statistics |
+
+These handoff types use `std::atomic` internally but **do not** integrate with any RTOS. You must respect producer/consumer roles. Everything else in memkit is **single-context** unless you add your own mutex or critical section.
+
+Full contract, queue vs SPSC/MPSC confusion, and FreeRTOS examples: **[CONCURRENCY.md](CONCURRENCY.md)**.
 
 Full picker: [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md).
 
@@ -348,6 +352,7 @@ Need every container on MCU in C?
 
 | Doc | Contents |
 |-----|----------|
+| [CONCURRENCY.md](CONCURRENCY.md) | Thread/ISR contract, lock-free trio, FreeRTOS patterns |
 | [GETTING_STARTED.md](GETTING_STARTED.md) | First steps, C/C++ examples, CMake FetchContent |
 | [C_API_REFERENCE.md](C_API_REFERENCE.md) | C config fields, flags, function parameters |
 | [CXX_API_REFERENCE.md](CXX_API_REFERENCE.md) | C++ init overloads, policies, methods |

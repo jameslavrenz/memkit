@@ -78,7 +78,7 @@ No `__cxa_*`, `__gxx_*`, or `std::` ABI symbols from libstdc++.
 |----------|-------------|
 | Customer uses `#include <memkit/memkit.hpp>` | C++26 + STL **headers** on their compile; separate delivery |
 | Tier-2 C API (hashmap, deque, …) | MPU build (`MEMKIT_MPU=1`), not this MCU C package |
-| `MpscQueue` / `SpscQueue` in customer C++ code | May need `-latomic` on some toolchains |
+| `MpscQueue` / `SpscQueue` / `DoubleBuffer` in customer C++ code | May need `-latomic`; see [CONCURRENCY.md](CONCURRENCY.md) |
 
 The default **`make lib`** and **`make all`** builds use the same **`-fno-exceptions -fno-rtti`** policy as **`lib-mcu-c`**; the freestanding archive adds **`-ffreestanding`** for pure-C customer link tests.
 

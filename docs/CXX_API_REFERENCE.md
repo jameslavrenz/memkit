@@ -183,6 +183,8 @@ Intrusive-node pool; `push_*`, `pop_*`, `insert_at`, `remove_at`, `foreach` (+ r
 
 ## Embedded-only utilities (C++ only)
 
+**Concurrency:** `SpscQueue`, `MpscQueue`, and `DoubleBuffer` are the only lock-free types. Roles and RTOS integration are documented in [CONCURRENCY.md](CONCURRENCY.md). All other classes below are **single-context** unless you add your own lock.
+
 | Class | Key init | Key operations |
 |-------|----------|----------------|
 | `SpscQueue<T>` | `init(byte_buffer, capacity)` power-of-2 | `push`, `pop`, `empty`, `full`, `size` |
@@ -238,6 +240,7 @@ Prefer `try_*` when empty/full is an expected outcome; use raw `status` when pro
 
 ## Related
 
+- [CONCURRENCY.md](CONCURRENCY.md) — lock-free trio, RTOS/ISR contract, FreeRTOS patterns
 - [C_API_REFERENCE.md](C_API_REFERENCE.md) — C parameter reference
 - [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) — which container to pick
 - [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — vendoring headers vs full library
