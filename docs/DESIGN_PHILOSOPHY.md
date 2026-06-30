@@ -142,21 +142,30 @@ This is intentional: less defensive wrapping around absurd sizes, more explicit 
 
 ---
 
-## Concurrency and RTOS (single-context by default)
+## Concurrency and RTOS (zero-overhead, OS-agnostic)
 
-memkit is **RTOS-agnostic** and **does not embed locks**. Almost every container assumes **one owning context** (task, main loop, or code you serialize). If two FreeRTOS tasks, or an ISR and a task, share a `queue_t` or `Queue` without your mutex, behavior is undefined.
+memkit is architected **without internal mutexes or RTOS coupling** — a deliberate embedded advantage: maximum hot-path speed, zero flash spent on unused lock machinery, and portability across bare-metal, RTOS, and embedded Linux.
 
-**Exceptions (C++ only):** three **lock-free handoff** types with fixed roles:
+Containers split into **two categories**:
 
-| Type | Pattern |
-|------|---------|
-| `SpscQueue` | One producer, one consumer |
-| `MpscQueue` | Many producers, **one** consumer |
-| `DoubleBuffer` | One producer, one consumer; block snapshot via `publish()` |
+| Category | Types | Model |
+|----------|-------|-------|
+| **Lock-free utilities** (C++ only) | `SpscQueue`, `MpscQueue`, `DoubleBuffer` | Wait-free or lock-free handoff with fixed producer/consumer roles |
+| **Single-threaded containers** | Everything else (C and C++) | One owning context; integrator wraps with OS mutex/semaphore if shared |
 
-These are **not** wrapped in RTOS APIs — you still respect who calls `push` vs `pop`. C `queue_t` / `ring_t` are **not** ISR-safe despite the names.
+**Lock-free trio** ([`spsc_queue.hpp`](../include/memkit/containers/spsc_queue.hpp), [`mpsc_queue.hpp`](../include/memkit/containers/mpsc_queue.hpp), [`double_buffer.hpp`](../include/memkit/containers/double_buffer.hpp)):
 
-**You own:** mutexes, critical sections, task ownership, and choosing `Queue` vs `SpscQueue` vs RTOS queues. See [CONCURRENCY.md](CONCURRENCY.md) for the full contract, queue naming pitfalls, and FreeRTOS integration patterns.
+| Type | Guarantee | Use |
+|------|-----------|-----|
+| `SpscQueue` | Wait-free | One producer → one consumer (ISR ↔ task) |
+| `MpscQueue` | Lock-free | Many producers → **one** consumer |
+| `DoubleBuffer` | Wait-free | Ping-pong block via `publish()` |
+
+**Not supported on ARM Cortex-M0/M0+** for the lock-free trio (no hardware exclusive instructions); all **single-threaded** containers work on M0+. See hardware table in [CONCURRENCY.md](CONCURRENCY.md#hardware--isa-compatibility-lock-free-trio-only).
+
+C `queue_t` / `ring_t` and C++ `Queue` / `Ring` are **single-threaded** — not ISR-safe despite naming.
+
+**You own:** OS locks when sharing single-threaded containers across tasks; role discipline for the lock-free trio. Full patterns (FreeRTOS, wrapper templates, ISA matrix): **[CONCURRENCY.md](CONCURRENCY.md)**.
 
 ---
 
@@ -241,8 +250,8 @@ C opaque blobs (`ring_t.bytes[MEMKIT_RING_OBJ_BYTES]`) hide layout; sizes are ch
 - **Not** a host desktop framework — MPU support targets embedded Linux, not “any OS”
 - **Not** exception-driven — status codes throughout
 - **Not** implicitly growable on MCU — capacity is a contract
-- **Not** thread-safe by default — single-context containers; three C++ lock-free handoff types only (see [CONCURRENCY.md](CONCURRENCY.md))
-- **Not** RTOS-coupled — no built-in mutex/semaphore layer; integrators own cross-task safety
+- **Not** thread-safe by default — lock-free trio (wait-free / lock-free) plus single-threaded containers; see [CONCURRENCY.md](CONCURRENCY.md)
+- **Not** RTOS-coupled — no built-in mutex layer; integrator-owned OS synchronization for shared single-threaded types
 - **Not** one-size API surface in C — tier 1 stays small; full C++ surface lives in headers
 - **Not** Windows-ready yet — see README future work
 

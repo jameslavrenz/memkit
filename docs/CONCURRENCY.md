@@ -1,214 +1,107 @@
-# Concurrency and RTOS usage
+# Concurrency, RTOS integration, and hardware requirements
 
-memkit is **MCU-first** and **RTOS-agnostic**. It does not ship mutexes, semaphores, critical-section helpers, or bindings for FreeRTOS, Zephyr, ThreadX, or any other OS. For almost all containers, **you choose who may call what** — or you add your own RTOS synchronization.
+memkit is **zero-overhead and OS-agnostic**. The library contains **no internal mutexes**, **no RTOS adapters**, and **no virtual dispatch** — architectural choices that maximize execution speed and minimize flash use on bare-metal firmware while remaining portable to RTOS and embedded-Linux deployments.
 
-For design rationale see [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md). For picking a queue type see [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md#ring-vs-queue-vs-deque-vs-spsc-vs-mpsc).
+Containers are split into **two strategic categories**:
 
----
+| Category | Representative types | Default concurrency |
+|----------|---------------------|---------------------|
+| **Lock-free utilities** | `SpscQueue`, `MpscQueue`, `DoubleBuffer` (C++ only) | Fixed producer/consumer roles; hardware atomics |
+| **Single-threaded containers** | `HashMap`, `Vector`, `BTree`, `FlatMap`, `EnumMap`, `Ring`, `Queue`, C API, `arena`, … | One owning context; integrator adds OS locks if shared |
 
-## Default contract: single context
-
-Unless stated otherwise below, treat every memkit type as **single-context**:
-
-- One FreeRTOS task owns it, **or**
-- One “main loop” with no concurrent access, **or**
-- You wrap all mutating calls in **your** mutex / critical section
-
-There is **no hidden locking** inside `Ring`, `Queue`, `Vector`, `HashMap`, `ObjPool`, `arena`, or the C API (`ring_t`, `queue_t`, …). Two tasks (or an ISR and a task) calling `push` / `pop` / `alloc` on the same instance without a contract is **undefined behavior**, same as two C functions racing on a shared buffer.
-
-This is intentional: no RTOS coupling, no lock overhead on hot paths, predictable code size on Cortex-M.
+For design rationale see [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md). For picking a queue type see [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md#ring-vs-queue-vs-deque-vs-spsc-vs-mpsc). Summary also in [README § Zero-overhead architecture](../README.md#zero-overhead--os-agnostic-architecture).
 
 ---
 
-## The lock-free trio (C++ only)
+## Category 1 — Lock-free trio (C++ only)
 
-Three C++ utilities use `std::atomic` for **cross-context handoff** with fixed roles. They are **not** general “thread-safe containers” — they solve specific producer/consumer patterns.
+Three headers implement **high-performance communication pipelines** — moving data safely across RTOS tasks, or between **Interrupt Service Routines (ISRs)** and the main background loop, without library-internal locking.
 
-| Type | Who may produce | Who may consume | What it carries | Not lock-free for |
-|------|-----------------|-----------------|-----------------|-------------------|
-| **`SpscQueue<T>`** | Exactly **one** producer (task or ISR) | Exactly **one** consumer (task or ISR) | Discrete messages (power-of-2 capacity) | Multiple producers or consumers |
-| **`MpscQueue<T>`** | **Many** producers (tasks and/or ISRs) | Exactly **one** consumer | Discrete messages (power-of-2; aligned storage) | Multiple consumers; unbounded blocking |
-| **`DoubleBuffer<T>`** | Exactly **one** producer | Exactly **one** consumer | One **full slot** (array/block), not a stream of items | Queue semantics; multiple readers |
+| Type | Header | Pattern | Progress guarantee |
+|------|--------|---------|-------------------|
+| **`SpscQueue<T>`** | [`spsc_queue.hpp`](../include/memkit/containers/spsc_queue.hpp) | Single-producer, single-consumer FIFO (power-of-2 capacity) | **Wait-free** |
+| **`MpscQueue<T>`** | [`mpsc_queue.hpp`](../include/memkit/containers/mpsc_queue.hpp) | Multi-producer, **single**-consumer FIFO | **Lock-free** |
+| **`DoubleBuffer<T>`** | [`double_buffer.hpp`](../include/memkit/containers/double_buffer.hpp) | Ping-pong buffer: `write_span()` → fill → `publish()` → `read_span()` | **Wait-free** |
+
+**Target use-case:** ISR ↔ task messaging, multi-ISR event fan-in to one consumer task, DMA/ADC/audio block handoff, and any pipeline where **latency and determinism** matter more than generic multi-threaded container semantics.
+
+These types are **not** wrapped in RTOS APIs. You enforce **who calls `push` vs `pop`**, or **`write_span` / `publish` vs `read_span`**. They are not substitutes for `Queue`, `Ring`, or C `queue_t`.
+
+### Progress guarantees (terminology)
+
+| Guarantee | Meaning in practice |
+|-----------|---------------------|
+| **Wait-free** | Each participating thread/ISR completes its operation in a **bounded** number of steps when roles are respected — no retry loops waiting on other contexts (`SpscQueue`, `DoubleBuffer`). |
+| **Lock-free** | System-wide progress is guaranteed; an individual producer may **spin briefly** contending for a slot (`MpscQueue` — Vyukov-style sequence cells). |
+
+### Role contract
+
+| Type | Producers | Consumers | Carries |
+|------|-----------|-----------|---------|
+| `SpscQueue` | Exactly **one** (task or ISR) | Exactly **one** | Discrete messages |
+| `MpscQueue` | **Many** (tasks and/or ISRs) | Exactly **one** | Discrete messages |
+| `DoubleBuffer` | Exactly **one** | Exactly **one** | One **full block** per `publish()` |
 
 ### How they differ from `Queue` / `Ring`
 
 | | **`Queue` / `queue_t`** | **`Ring` / `ring_t`** | **`SpscQueue` / `MpscQueue`** | **`DoubleBuffer`** |
 |--|-------------------------|----------------------|----------------------------------|--------------------|
-| **Thread / ISR safe?** | No — single context | No — single context | Yes, **only** with correct pairing | Yes, **only** with correct pairing |
-| **C API?** | Yes (tier 1) | Yes (tier 1) | No — C++ only | No — C++ only |
-| **Full when…** | Push fails (`FULL`) unless MPU growable | Push fails or overwrites oldest (policy) | Push fails (`FULL`) or spins then fails (MPSC) | Producer must finish slot before `publish()` |
-| **Typical use** | Task-local FIFO | Telemetry / flight log | ISR → task messages | DMA / ADC ping-pong block |
+| **Cross-context safe?** | No — single-threaded | No — single-threaded | Yes, with correct pairing | Yes, with correct pairing |
+| **C API?** | Yes | Yes | No | No |
+| **Typical use** | Task-local FIFO | Telemetry / flight log | ISR → task messages | DMA / ADC frame snapshot |
 
-**Common mistake:** using C `queue_t` or C++ `Queue` from an ISR because the name says “queue.” Those types are **not** concurrent. For ISR → task messaging, use **`SpscQueue`** or **`MpscQueue`** (C++), or your RTOS queue, or a C++ wrapper around memkit’s lock-free types.
+**Common mistake:** calling C `queue_push` or C++ `Queue::push_back` from an ISR because the name says “queue.” Use the **lock-free trio**, an **RTOS queue**, or **single-task ownership**.
 
-### `SpscQueue` details
+### Implementation notes
 
-- Lock-free single-producer / single-consumer FIFO.
-- Capacity must be a **power of two**.
-- Producer calls `push`; consumer calls `pop`. Do not call both sides from the same context unless you serialize externally.
-- Optional policies: drop-on-full, overwrite-on-full (see header).
-- May require **`-latomic`** on some embedded GCC toolchains.
+- **`SpscQueue`:** atomic head/tail; optional drop-on-full / overwrite-on-full policies (see header).
+- **`MpscQueue`:** per-cell sequence atomics; storage must meet `MpscQueue<T>::storage_align()`. Arena allocation uses absolute-address alignment ([bounds and sizing](DESIGN_PHILOSOPHY.md#bounds-and-sizing-what-memkit-checks-vs-what-you-own)).
+- **`DoubleBuffer`:** single atomic index selects readable slot; producer must not touch the read slot during fill.
 
-### `MpscQueue` details
-
-- Vyukov-style bounded MPSC queue: many `push`, one `pop`.
-- Storage must satisfy `MpscQueue<T>::storage_align()` (atomics alignment). Arena allocation handles absolute-address alignment; see [bounds and sizing](DESIGN_PHILOSOPHY.md#bounds-and-sizing-what-memkit-checks-vs-what-you-own).
-- `push` may spin up to a limit then return `full`; `pop` is **not** safe from multiple consumers.
-- **Not** multi-consumer — do not call `pop` from two tasks.
-
-### `DoubleBuffer` details
-
-- Two slots: producer fills the **write** slot (`write_span()`), then `publish()`; consumer reads the stable **read** slot (`read_span()`).
-- Carries a **snapshot** of a block (e.g. one ADC frame), not individual queued events.
-- Producer must not touch the read slot; consumer must not touch the write slot until after `publish()`.
-
-See `examples/example_embedded_patterns.cpp` (DoubleBuffer, MpscQueue) and `examples/example_comm_pipeline.cpp` (SpscQueue).
+Examples: `examples/example_embedded_patterns.cpp` (DoubleBuffer, MpscQueue), `examples/example_comm_pipeline.cpp` (SpscQueue).
 
 ---
 
-## What is not concurrent
+## Category 2 — Single-threaded containers (bare-metal optimized)
 
-| Surface | Safe across tasks/ISRs without your lock? |
-|---------|-------------------------------------------|
-| C API tier 1 & 2 (`ring_t`, `queue_t`, …) | **No** |
-| C++ `Ring`, `Queue`, `Deque`, `Vector`, maps, pools, … | **No** |
-| `arena` / `arena_t` bump allocation | **No** |
-| `ByteRing`, `TimerWheel`, `HandlePool`, … | **No** |
-| Growable / `*_create` paths (MPU) | **No** |
+All other memkit types — **`HashMap`**, **`Vector`**, **`BTree`**, **`FlatMap`**, **`EnumMap`**, **`Ring`**, **`Queue`**, **`ObjPool`**, **`ByteRing`**, the full **C API** (`ring_t`, `queue_t`, `vector_t`, …), and **`arena` / `arena_t`** — are **raw, ultra-fast, and strictly single-threaded**.
 
-**Arena:** one task (or critical section) should `allocate` / `reset`. Sharing an arena across tasks without external serialization is unsafe.
+There is **no hidden locking**. Two RTOS tasks (or an ISR and a task) mutating the same instance without a contract is **undefined behavior**.
 
-**Pure C firmware:** tier-1 C has **no** lock-free queue. Options:
+**Architectural advantage:** zero synchronization overhead on every push, pop, lookup, or arena bump — ideal when a container is owned by one task or one main loop.
 
-1. Use C++ for the ISR handoff module (`SpscQueue` / `MpscQueue`) and keep the rest in C.
-2. Use your RTOS’s native queue for cross-context messages.
-3. Keep shared memkit C containers on **one task only**.
+### RTOS integration — application-layer locking
 
----
+When a single-threaded container **must** be shared across tasks, wrap access with **your** OS-native primitive: mutex, semaphore, or critical section. memkit deliberately stays OS-agnostic so you pick the mechanism that fits latency, priority inversion policy, and ISR rules.
 
-## When to use your RTOS lock
-
-Use **your** mutex, semaphore, or critical section when:
-
-- Two or more tasks share the same `Queue`, `HashMap`, `ObjPool`, etc.
-- One task initializes or resets an **arena** while others might allocate.
-- You need **multiple consumers** — memkit’s MPSC queue does not support that; merge in one task or use RTOS primitives.
-- You wrap memkit in a driver API used from unpredictable call sites.
-
-memkit will not pick the lock type for you (ISR-safe mutex vs task mutex vs `taskENTER_CRITICAL`). That depends on your RTOS and latency budget.
-
----
-
-## FreeRTOS patterns (illustrative)
-
-memkit does **not** depend on FreeRTOS. The snippets below show typical **integration** — copy and adapt naming/handles to your project.
-
-### Pattern 1: ISR → task with `SpscQueue` (recommended for one interrupt source)
-
-Use the queue for data; use a task notification (or binary semaphore) only to **wake** the consumer — avoid copying large payloads through `xQueueSend`.
+**Generic C++ wrapper pattern:**
 
 ```cpp
 #include <memkit/memkit.hpp>
 #include "FreeRTOS.h"
-#include "task.h"
-
-struct event_t { std::uint8_t source; std::uint16_t value; };
-
-static memkit::SpscQueue<event_t> g_events;
-static TaskHandle_t g_consumer_task = nullptr;
-
-// Call once at startup (consumer task context)
-void events_init(std::byte* storage, std::size_t cap_pow2)
-{
-    memkit::ok(g_events.init(storage, cap_pow2));
-}
-
-// UART ISR — sole producer
-extern "C" void UART_IRQHandler(void)
-{
-    const event_t ev{.source = 1u, .value = read_uart_dr()};
-    if (memkit::ok(g_events.push(ev))) {
-        BaseType_t woken = pdFALSE;
-        vTaskNotifyGiveFromISR(g_consumer_task, &woken);
-        portYIELD_FROM_ISR(woken);
-    }
-}
-
-// Consumer task — sole consumer
-void consumer_task(void*)
-{
-    for (;;) {
-        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        event_t ev{};
-        while (memkit::ok(g_events.pop(ev))) {
-            handle_event(ev);
-        }
-    }
-}
-```
-
-### Pattern 2: Multiple ISRs → one task with `MpscQueue`
-
-Each ISR may `push`; **only** the consumer task calls `pop`.
-
-```cpp
-static memkit::MpscQueue<event_t> g_events;
-
-extern "C" void Timer_ISR(void)
-{
-    const event_t ev{.source = 2u, .value = 0u};
-    (void)g_events.push(ev);  // check status if drops matter
-}
-
-extern "C" void GPIO_ISR(void)
-{
-    const event_t ev{.source = 3u, .value = pin_state()};
-    (void)g_events.push(ev);
-}
-
-void consumer_task(void*)
-{
-    for (;;) {
-        event_t ev{};
-        if (memkit::ok(g_events.pop(ev))) {
-            handle_event(ev);
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(1));  // or wait on notification when idle
-        }
-    }
-}
-```
-
-### Pattern 3: Two tasks sharing a memkit `Queue` — use a mutex
-
-`Queue` / `queue_t` is **not** ISR-safe and **not** lock-free. Serialize with FreeRTOS:
-
-```cpp
-#include <memkit/memkit.hpp>
 #include "semphr.h"
 
-static memkit::Queue<sample_t> g_samples;
-static SemaphoreHandle_t g_samples_mu = nullptr;
-
-void samples_init(/* storage */)
+template<typename Fn>
+memkit::status with_lock(SemaphoreHandle_t mu, Fn&& fn)
 {
-    g_samples_mu = xSemaphoreCreateMutex();
-    memkit::ok(g_samples.init(storage));
+    if (xSemaphoreTake(mu, portMAX_DELAY) != pdTRUE) {
+        return memkit::status::invalid;
+    }
+    const memkit::status st = fn();
+    xSemaphoreGive(mu);
+    return st;
 }
 
-memkit::status sample_push(const sample_t* s)
+static memkit::HashMap<std::uint32_t, config_t> g_cfg;
+static SemaphoreHandle_t g_cfg_mu;
+
+memkit::status cfg_put(std::uint32_t key, const config_t& value)
 {
-    if (xSemaphoreTake(g_samples_mu, pdMS_TO_TICKS(10)) != pdTRUE) {
-        return memkit::status::full;  // or your own timeout policy
-    }
-    const memkit::status st = g_samples.push_back(*s);
-    xSemaphoreGive(g_samples_mu);
-    return st;
+    return with_lock(g_cfg_mu, [&] { return g_cfg.put(key, value); });
 }
 ```
 
-Same idea for C API:
+**C API — same idea:**
 
 ```c
 #include <queue.h>
@@ -228,9 +121,91 @@ queue_status_t queue_push_threadsafe(const void *elem)
 }
 ```
 
-### Pattern 4: DMA / ADC with `DoubleBuffer`
+**Pure C firmware** without C++: tier-1 C has **no** lock-free queue. Options — RTOS queue for ISR handoff, a small C++ translation unit using the trio, or **single-task ownership**.
 
-Producer (ISR or DMA completion) fills write slot, then publishes; consumer task reads read slot.
+---
+
+## Hardware & ISA compatibility (lock-free trio only)
+
+Lock-free utilities compile against `std::atomic`, which must lower to **native exclusive load/store** (or equivalent) for true lock-free behavior. **Single-threaded containers are unaffected** — they run on every MCU target memkit supports, including Cortex-M0.
+
+| Platform | Lock-free trio | Details |
+|----------|:--------------:|---------|
+| **ARM Cortex-M0 / M0+** (ARMv6-M) | **Not supported** | Ultra-low-power cores **lack** exclusive monitor instructions (`LDREX`/`STREX` and ARMv8-M equivalents). Software atomics cannot provide the same hardware-backed guarantees. **Single-threaded containers work perfectly.** |
+| **ARM Cortex-M3 / M4 / M4F / M7** (ARMv7-M) | **Fully supported** | Native **`LDREX` / `STREX`** — 100% lock-free execution on supported hot paths. |
+| **ARM Cortex-M33** (ARMv8-M) | **Highly optimized** | **`LDAEX` / `STLEX`** with integrated barriers — hardware enforces memory ordering for maximum efficiency. |
+| **Desktop / server** (x86, x64, ARM A-series) | **Fully supported** | Native atomic instructions; used for host tests, CI, and MPU builds. |
+
+**Toolchain:** on some embedded GCC targets, link **` -latomic`** when using the lock-free trio. See [DISTRIBUTING_MCU_C.md](DISTRIBUTING_MCU_C.md).
+
+**Do not** use `SpscQueue`, `MpscQueue`, or `DoubleBuffer` on Cortex-M0/M0+ expecting lock-free ISR handoff — use single-threaded containers, an RTOS message queue, or a single-context design.
+
+---
+
+## FreeRTOS patterns (lock-free trio)
+
+memkit does **not** depend on FreeRTOS. Snippets below illustrate typical integration.
+
+### ISR → task with `SpscQueue` (one interrupt source)
+
+```cpp
+#include <memkit/memkit.hpp>
+#include "FreeRTOS.h"
+#include "task.h"
+
+struct event_t { std::uint8_t source; std::uint16_t value; };
+
+static memkit::SpscQueue<event_t> g_events;
+static TaskHandle_t g_consumer_task = nullptr;
+
+extern "C" void UART_IRQHandler(void)
+{
+    const event_t ev{.source = 1u, .value = read_uart_dr()};
+    if (memkit::ok(g_events.push(ev))) {
+        BaseType_t woken = pdFALSE;
+        vTaskNotifyGiveFromISR(g_consumer_task, &woken);
+        portYIELD_FROM_ISR(woken);
+    }
+}
+
+void consumer_task(void*)
+{
+    for (;;) {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        event_t ev{};
+        while (memkit::ok(g_events.pop(ev))) {
+            handle_event(ev);
+        }
+    }
+}
+```
+
+### Multiple ISRs → one task with `MpscQueue`
+
+Each ISR may `push`; **only** the consumer task calls `pop`.
+
+```cpp
+static memkit::MpscQueue<event_t> g_events;
+
+extern "C" void Timer_ISR(void)
+{
+    (void)g_events.push(event_t{.source = 2u, .value = 0u});
+}
+
+void consumer_task(void*)
+{
+    for (;;) {
+        event_t ev{};
+        if (memkit::ok(g_events.pop(ev))) {
+            handle_event(ev);
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
+    }
+}
+```
+
+### DMA / ADC with `DoubleBuffer`
 
 ```cpp
 static memkit::DoubleBuffer<adc_frame_t> g_adc;
@@ -256,13 +231,7 @@ void signal_task(void*)
 
 ## MPU / embedded Linux
 
-The same contract applies on MPU builds: memkit does not add pthread locks. If several pthreads share a container, use `pthread_mutex` (or your framework’s lock) around mutating calls. The lock-free trio still requires the same producer/consumer pairing; pthreads do not turn `SpscQueue` into a general concurrent queue.
-
----
-
-## Toolchain note
-
-`SpscQueue`, `MpscQueue`, and `DoubleBuffer` use `std::atomic`. On some embedded GCC targets you may need **`-latomic`**. See [DISTRIBUTING_MCU_C.md](DISTRIBUTING_MCU_C.md) if C++ firmware links these types.
+The same two-category model applies on MPU builds. memkit does not add `pthread` locks. Share single-threaded containers with **`pthread_mutex`** (or your framework lock). The lock-free trio still requires fixed producer/consumer roles — pthreads do not make `SpscQueue` a general concurrent container.
 
 ---
 
@@ -271,22 +240,23 @@ The same contract applies on MPU builds: memkit does not add pthread locks. If s
 ```
 Need ISR or multiple contexts?
 │
-├─ No  → Queue / Ring / Vector / C API — single task or your mutex
+├─ No  → Single-threaded container — one task, or your OS mutex
 │
-└─ Yes → Discrete messages?
-         ├─ One producer  → SpscQueue
-         ├─ Many producers, one consumer → MpscQueue
-         └─ One block snapshot (DMA/ADC) → DoubleBuffer
+└─ Yes → On supported hardware (not Cortex-M0)?
+         ├─ Discrete messages, one producer  → SpscQueue (wait-free)
+         ├─ Discrete messages, many producers → MpscQueue (lock-free, one consumer)
+         └─ One block snapshot (DMA/ADC)      → DoubleBuffer (wait-free)
 
-Pure C only, ISR handoff?
-         → RTOS queue, or C++ module with SpscQueue/MpscQueue
+Cortex-M0 / M0+ or pure C ISR handoff?
+         → RTOS queue, or single-threaded design
 ```
 
 ---
 
 ## Related docs
 
+- [README § Zero-overhead architecture](../README.md#zero-overhead--os-agnostic-architecture)
 - [CONTAINER_GUIDE.md](CONTAINER_GUIDE.md) — which container for which job
 - [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) — MCU vs MPU, memory models
 - [ADOPTION_GUIDE.md](ADOPTION_GUIDE.md) — build flags, `-latomic`, piecemeal integration
-- [CXX_API_REFERENCE.md](CXX_API_REFERENCE.md) — `SpscQueue`, `MpscQueue`, `DoubleBuffer` API tables
+- [CXX_API_REFERENCE.md](CXX_API_REFERENCE.md) — API tables for the lock-free trio

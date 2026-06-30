@@ -183,26 +183,26 @@ Intrusive-node pool; `push_*`, `pop_*`, `insert_at`, `remove_at`, `foreach` (+ r
 
 ## Embedded-only utilities (C++ only)
 
-**Concurrency:** `SpscQueue`, `MpscQueue`, and `DoubleBuffer` are the only lock-free types. Roles and RTOS integration are documented in [CONCURRENCY.md](CONCURRENCY.md). All other classes below are **single-context** unless you add your own lock.
+**Two-category model:** only **`SpscQueue`**, **`MpscQueue`**, and **`DoubleBuffer`** are lock-free/wait-free cross-context utilities (see [CONCURRENCY.md](CONCURRENCY.md) for ISA requirements — **not supported on Cortex-M0/M0+**). All other types in this table are **single-threaded**; use an OS mutex if shared across RTOS tasks.
 
-| Class | Key init | Key operations |
-|-------|----------|----------------|
-| `SpscQueue<T>` | `init(byte_buffer, capacity)` power-of-2 | `push`, `pop`, `empty`, `full`, `size` |
-| `MpscQueue<T>` | `init(ptr, capacity)` aligned storage | Multi-producer `push`, single `pop` |
-| `ByteRing` | byte buffer + capacity | `push_bytes`, contiguous read/write |
-| `SmallString<N>` | — | `assign`, `append`, `view`, `c_str` |
-| `SmallBuffer<N>` | — | `assign`, `data`, `size` |
-| `DoubleBuffer<T>` | backing + slot capacity | `write_span`, `publish`, `read_span` |
-| `TimerWheel<N>` | `init()` | `schedule(node, ticks)`, `cancel`, `tick` |
-| `TokenBucket` | `init(capacity, refill_per_tick)` | `refill`, `try_consume`, `consume` |
-| `RingLog<Record>` | buffer + capacity | `append`, `foreach` (newest/oldest order) |
-| `SparseSet` | dense + sparse arrays + max_id | `insert`, `remove`, `contains`, iterate dense |
-| `FixedVariant<Ts...>` | — | `emplace<I>(...)`, `holds`, `get` |
-| `FixedIoVec<N>` | — | `push(ptr,len)`, `slice`, `span` |
-| `LookupTable<X,Y>` | sorted keys + values arrays | `at`, `lookup` (interpolate) |
-| `BitReader` / `BitWriter` | buffer + bit count | `read`/`write`, `read_bits`/`write_bits` |
-| `MovingAverage<T,N>` / `WindowStats<T,N>` | — | `push`, `average`, `min`, `max` |
-| `IntrusiveListHead` | — | embed `IntrusiveListHook` in nodes; `push_back`, `erase`, `splice` |
+| Class | Header | Progress guarantee | Key operations |
+|-------|--------|-------------------|----------------|
+| `SpscQueue<T>` | `spsc_queue.hpp` | **Wait-free** | `push`, `pop`, `empty`, `full`, `size` — power-of-2 capacity |
+| `MpscQueue<T>` | `mpsc_queue.hpp` | **Lock-free** | Multi-producer `push`, single `pop`; aligned storage |
+| `DoubleBuffer<T>` | `double_buffer.hpp` | **Wait-free** | `write_span`, `publish`, `read_span` |
+| `ByteRing` | `byte_ring.hpp` | Single-threaded | `push_bytes`, contiguous read/write |
+| `SmallString<N>` | — | Single-threaded | `assign`, `append`, `view`, `c_str` |
+| `SmallBuffer<N>` | — | Single-threaded | `assign`, `data`, `size` |
+| `TimerWheel<N>` | `timer_wheel.hpp` | Single-threaded | `schedule(node, ticks)`, `cancel`, `tick` |
+| `TokenBucket` | `token_bucket.hpp` | Single-threaded | `refill`, `try_consume`, `consume` |
+| `RingLog<Record>` | `ring_log.hpp` | Single-threaded | `append`, `foreach` (newest/oldest order) |
+| `SparseSet` | `sparse_set.hpp` | Single-threaded | `insert`, `remove`, `contains`, iterate dense |
+| `FixedVariant<Ts...>` | `fixed_variant.hpp` | Single-threaded | `emplace<I>(...)`, `holds`, `get` |
+| `FixedIoVec<N>` | `fixed_iovec.hpp` | Single-threaded | `push(ptr,len)`, `slice`, `span` |
+| `LookupTable<X,Y>` | `lookup_table.hpp` | Single-threaded | `at`, `lookup` (interpolate) |
+| `BitReader` / `BitWriter` | `bit_stream.hpp` | Single-threaded | `read`/`write`, `read_bits`/`write_bits` |
+| `MovingAverage<T,N>` / `WindowStats<T,N>` | `running_stats.hpp` | Single-threaded | `push`, `average`, `min`, `max` |
+| `IntrusiveListHead` | `intrusive_list.hpp` | Single-threaded | embed `IntrusiveListHook`; `push_back`, `erase`, `splice` |
 
 Many of these require `storage_bytes()` / `storage_align()` static helpers — see header for sizing before `init`.
 

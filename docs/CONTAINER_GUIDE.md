@@ -2,7 +2,7 @@
 
 memkit ships **32 C++ utilities** and **14 C containers**. This guide picks by **what you need to do**, not by class name.
 
-**RTOS / ISR?** Most types are **single-context**; only three C++ types are lock-free handoff queues/buffers. Read [CONCURRENCY.md](CONCURRENCY.md) before using containers from interrupts or multiple tasks.
+**Architecture:** memkit is **zero-overhead and OS-agnostic** — no internal mutexes. Types fall into **lock-free utilities** (`SpscQueue`, `MpscQueue`, `DoubleBuffer` — C++ only, hardware-dependent) and **single-threaded containers** (everything else). See [README § Zero-overhead architecture](../README.md#zero-overhead--os-agnostic-architecture) and [CONCURRENCY.md](CONCURRENCY.md).
 
 ## Quick picker
 
@@ -23,9 +23,9 @@ memkit ships **32 C++ utilities** and **14 C containers**. This guide picks by *
 | Linked list, both directions | `DList` | `dlist_t` | MPU / C++ |
 | Cache with LRU eviction | `LruCache` | `lrucache_t` | MPU / C++ |
 | Raw bytes / UART / DMA chunks | `ByteRing` | — | C++ only |
-| ISR → main, one producer & consumer | `SpscQueue` | — | Lock-free; power-of-2; **C++ only** |
-| Multiple ISRs → one consumer | `MpscQueue` | — | Lock-free MPSC; **one** consumer; C++ only |
-| Ping-pong DMA / double buffer | `DoubleBuffer` | — | Block handoff via `publish()`; C++ only |
+| ISR → main, one producer & consumer | `SpscQueue` | — | **Wait-free**; C++ only; not Cortex-M0 |
+| Multiple ISRs → one consumer | `MpscQueue` | — | **Lock-free** MPSC; one consumer; C++ only |
+| Ping-pong DMA / double buffer | `DoubleBuffer` | — | **Wait-free** block handoff; C++ only |
 | Small sorted map (≤ few dozen keys) | `FlatMap` | — | C++ only; cache-friendly |
 | Enum → handler table | `EnumMap` | — | C++ only |
 | Timers / ticks in the future | `TimerWheel` | — | C++ only; intrusive nodes |
@@ -51,12 +51,11 @@ Ring      push back ──► [ … ] ──► optional overwrite oldest when f
 
 Deque     push/pop at both ends — single task / mutex
 
-SpscQueue one producer, one consumer, lock-free (C++ only)
+SpscQueue one producer, one consumer — wait-free (C++ only; ARMv7-M+)
 
-MpscQueue many producers, one consumer, lock-free (C++ only)
+MpscQueue many producers, one consumer — lock-free (C++ only; ARMv7-M+)
 
-DoubleBuffer  one producer fills a slot, publish(), one consumer reads
-              Block snapshot — not a message queue (C++ only)
+DoubleBuffer  one producer fills a slot, publish(), one consumer reads — wait-free (C++ only; ARMv7-M+)
 ```
 
 ### Comparison table

@@ -55,10 +55,84 @@ C++ Ring<T>, Vector<T>, …  →  detail/*_core<Policy>  ←  c_api/*_box  →  
 - **No duplicate logic.** C++ uses `typed_element_policy<T>`; C uses `runtime_element_policy` with `elem_size` and optional `copy_fn` / `destroy_fn`.
 - **Opaque C objects.** Each C container is a fixed-size blob (`unsigned char bytes[MEMKIT_*_OBJ_BYTES]`) verified at library build time via `include/memkit/c_api/static_checks.hpp`.
 - **Slim C API build.** All `extern "C"` bindings compile in one translation unit (`src/c_api/bindings.cpp`), which `#include`s per-container fragments under `src/c_api/bindings/*.inc.cpp` (those fragments are part of the same compile — not separate or dead code). Callback bridges and layout checks are header-only.
+- **Zero-overhead & OS-agnostic.** No internal mutexes, no virtual functions, no RTTI. Polymorphism is compile-time (templates + policy structs). Maximum hot-path speed and minimum flash footprint on bare-metal targets.
 
 **C++ (32 utilities)** — templates and header-only classes in `include/memkit/containers/`, included via `<memkit/memkit.hpp>`.
 
 **C (14 containers + arena)** — type-erased by design (C23 has no generics). Each container exposes `*_init` / `*_create` / `*_destroy` over a shared `*_box` implementation. Utility types (`SmallString`, `SmallBuffer`, queues, maps, `FixedVariant`, `TokenBucket`, `FixedIoVec`, `LookupTable`, etc.) are **C++-only** by design.
+
+## Zero-overhead & OS-agnostic architecture
+
+memkit is architected for **embedded systems that cannot afford hidden synchronization costs**. The library ships **no internal mutexes**, **no RTOS bindings**, and **no virtual dispatch** — deliberate choices that keep execution predictable, images small, and the library portable across bare-metal, RTOS, and embedded-Linux targets.
+
+Containers fall into **two strategic categories**:
+
+| Category | Types | Concurrency model | Primary advantage |
+|----------|-------|-------------------|-------------------|
+| **Lock-free utilities** | `SpscQueue`, `MpscQueue`, `DoubleBuffer` (C++ only) | Fixed producer/consumer roles; hardware atomics | Wait-free or lock-free handoff across tasks and ISRs |
+| **Single-threaded containers** | `HashMap`, `Vector`, `BTree`, `FlatMap`, `EnumMap`, `Ring`, `Queue`, C API (`ring_t`, `queue_t`, …), etc. | One owning context by default | Raw, ultra-fast paths with zero locking overhead |
+
+Full integration guide (FreeRTOS patterns, queue naming, `-latomic`): **[docs/CONCURRENCY.md](docs/CONCURRENCY.md)**.
+
+### Category 1 — Lock-free trio (C++ only)
+
+Three headers implement **high-performance communication pipelines** — safely moving data between RTOS tasks, or between an **Interrupt Service Routine (ISR)** and the main background loop, without OS-provided queues or library-internal locks.
+
+| Type | Header | Pattern | Progress guarantee |
+|------|--------|---------|-------------------|
+| **`SpscQueue<T>`** | [`spsc_queue.hpp`](include/memkit/containers/spsc_queue.hpp) | Single-producer, single-consumer FIFO | **Wait-free** (bounded steps on the hot path when roles are respected) |
+| **`MpscQueue<T>`** | [`mpsc_queue.hpp`](include/memkit/containers/mpsc_queue.hpp) | Multi-producer, **single**-consumer FIFO | **Lock-free** (Vyukov-style; producers may spin briefly) |
+| **`DoubleBuffer<T>`** | [`double_buffer.hpp`](include/memkit/containers/double_buffer.hpp) | Ping-pong buffer with `write_span()` → `publish()` → `read_span()` | **Wait-free** handoff of a full data block |
+
+These are **not** general-purpose “thread-safe containers.” Each type defines **who may produce and who may consume**. Breaking those roles requires application-level synchronization.
+
+> **Naming note:** C++ `Queue` / C `queue_t` are **single-threaded FIFO rings**, not substitutes for `SpscQueue` or `MpscQueue`.
+
+### Category 2 — Single-threaded containers (bare-metal optimized)
+
+The remaining library — including **`HashMap`**, **`Vector`**, **`BTree`**, **`FlatMap`**, **`EnumMap`**, **`Ring`**, **`Queue`**, pools, lists, the **C API**, and **`arena`** — is **strictly single-threaded** by design: no hidden locking, no atomic overhead, direct memory access on the hot path.
+
+**RTOS integration:** when a container must be shared across multiple tasks, wrap it at the **application layer** with your OS-native primitive (mutex, semaphore, or critical section). memkit stays OS-agnostic; you choose the lock that matches your latency and context rules.
+
+```cpp
+#include <memkit/memkit.hpp>
+// Your RTOS headers, e.g. #include "FreeRTOS.h" / #include "semphr.h"
+
+template<typename Fn>
+memkit::status with_container_lock(SemaphoreHandle_t mu, Fn&& fn)
+{
+    if (xSemaphoreTake(mu, portMAX_DELAY) != pdTRUE) {
+        return memkit::status::invalid;
+    }
+    const memkit::status st = fn();
+    xSemaphoreGive(mu);
+    return st;
+}
+
+// Example: two tasks sharing one memkit::Queue
+static memkit::Queue<sample_t> g_samples;
+static SemaphoreHandle_t       g_samples_mu;
+
+memkit::status push_sample(const sample_t& s)
+{
+    return with_container_lock(g_samples_mu, [&] { return g_samples.push_back(s); });
+}
+```
+
+Pure **C** firmware uses the same pattern around `queue_t`, `ring_t`, etc. Tier-1 C has **no** lock-free queue; use C++ for the trio, an RTOS queue for ISR handoff, or single-task ownership.
+
+### Hardware & ISA compatibility (lock-free trio)
+
+Lock-free utilities depend on `std::atomic` lowering to **native hardware synchronization** (exclusive load/store or equivalent). **Single-threaded containers run on any target** memkit supports; the table below applies **only** to `SpscQueue`, `MpscQueue`, and `DoubleBuffer`.
+
+| Platform | Lock-free trio | Mechanism / notes |
+|----------|:--------------:|-------------------|
+| **ARM Cortex-M0 / M0+** (ARMv6-M) | **Not supported** | No `LDREX`/`STREX` (or equivalent). Use single-threaded containers or an RTOS queue for cross-context data. |
+| **ARM Cortex-M3 / M4 / M4F / M7** (ARMv7-M) | **Fully supported** | Native `LDREX`/`STREX` — true lock-free execution on the hot path. |
+| **ARM Cortex-M33** (ARMv8-M) | **Highly optimized** | `LDAEX`/`STLEX` with integrated barriers — hardware-enforced ordering for maximum efficiency. |
+| **Desktop / server** (x86, x64, ARM A-series) | **Fully supported** | Native atomic instructions; also used for host CI and MPU builds. |
+
+On supported embedded GCC toolchains, linking the lock-free trio may require **`-latomic`**. See [DISTRIBUTING_MCU_C.md](docs/DISTRIBUTING_MCU_C.md).
 
 ### API completeness (v0.2)
 
@@ -185,11 +259,11 @@ All types live in namespace `memkit`. Operations return `memkit::status` unless 
 | `SmallString<N>` | `small_string.hpp` | Fixed string | `assign`, `append`, `clear`, `size`, `empty`, `view`, `c_str`, `operator==` |
 | `ByteRing` | `byte_ring.hpp` | Byte I/O ring | `init`, `init_from_arena`, `push_bytes`, `readable_contiguous`, `writable_contiguous`, `commit_read`/`write` |
 | `IntrusiveListHead` | `intrusive_list.hpp` | Intrusive lists | `push_back`/`front`, `erase`, `splice`, `is_linked`; hooks: `IntrusiveListHook`, `IntrusiveDListHook` |
-| `SpscQueue<T>` | `spsc_queue.hpp` | Lock-free SPSC (1 prod / 1 cons) | See [CONCURRENCY.md](docs/CONCURRENCY.md) — not the same as `Queue` |
+| `SpscQueue<T>` | `spsc_queue.hpp` | Wait-free SPSC handoff | `#include <memkit/containers/spsc_queue.hpp>` — not `Queue` |
 | `FlatMap<K,V>` | `flat_map.hpp` | Sorted flat map | `init`, `init_from_arena`, `put`, `get`, `remove`, `contains`, `find`, `foreach` |
 | `TimerWheel<N>` | `timer_wheel.hpp` | Timing wheel | `init`, `schedule`, `cancel`, `tick`; nodes: `TimerWheelNode` |
-| `DoubleBuffer<T>` | `double_buffer.hpp` | Ping-pong buffer (1 prod / 1 cons) | `write_span`, `publish`, `read_span` — see [CONCURRENCY.md](docs/CONCURRENCY.md) |
-| `MpscQueue<T>` | `mpsc_queue.hpp` | Lock-free MPSC (N prod / 1 cons) | See [CONCURRENCY.md](docs/CONCURRENCY.md) — aligned storage |
+| `DoubleBuffer<T>` | `double_buffer.hpp` | Wait-free ping-pong block | `write_span`, `publish`, `read_span` |
+| `MpscQueue<T>` | `mpsc_queue.hpp` | Lock-free MPSC handoff | `#include <memkit/containers/mpsc_queue.hpp>` — one consumer only |
 | `EnumMap<Enum,V,N>` | `enum_map.hpp` | Enum map | `init`, `put`, `get`, `at`, `contains`, `clear`, `foreach` |
 | `RingLog<Record>` | `ring_log.hpp` | Flight recorder | `init`, `init_from_arena`, `append`, `clear`, `size`, `capacity`, `foreach` |
 | `SparseSet` | `sparse_set.hpp` | Active ID set | `init`, `init_from_arena`, `insert`, `remove`, `contains`, `clear`, dense `operator[]` |
@@ -354,12 +428,12 @@ Most firmware workflows combine a few memkit types rather than needing new conta
 
 | Pattern | Building blocks | Notes |
 |---------|-----------------|-------|
-| **ISR → main handoff** | `SpscQueue<T>` (one ISR) or `MpscQueue<T>` (several ISRs) | Lock-free; fixed producer/consumer roles — see [CONCURRENCY.md](docs/CONCURRENCY.md) |
+| **ISR → main handoff** | `SpscQueue<T>` (one ISR) or `MpscQueue<T>` (several ISRs) | Wait-free / lock-free; fixed roles — [architecture](#zero-overhead--os-agnostic-architecture) |
 | **Deferred work / tasks** | `IntrusiveListHead` + `TimerWheel<N>` | Embed hooks in your structs; schedule callbacks |
 | **Command dispatch** | `EnumMap<cmd, handler>` or `FlatMap<id, fn>` | O(1) enum table for small sets |
 | **Active entity / timer set** | `SparseSet` or `HandlePool<T>` + `Bitset` | Dense iteration over live IDs |
 | **Protocol payload** | `SmallBuffer<N>` + `BitReader` / `BitWriter` | Length-prefixed binary + packed fields |
-| **DMA / ADC pipeline** | `DoubleBuffer<T>` or `FixedIoVec<N>` | Producer fills, `publish()`, consumer reads stable slot — not a message queue |
+| **DMA / ADC pipeline** | `DoubleBuffer<T>` or `FixedIoVec<N>` | Wait-free block handoff via `publish()`; scatter/gather for I/O |
 | **Sensor filtering** | `MovingAverage<T,N>` or `WindowStats<T,N>` | Fixed window; no heap |
 | **Calibration** | `LookupTable<X,Y>` over flash arrays | Interpolate ADC → engineering units |
 | **Rate-limited I/O** | `TokenBucket` + `ByteRing` / UART driver | Call `refill()` from tick, `try_consume()` before TX |
@@ -674,11 +748,11 @@ ring_commit_write(&ring, n);
 | SmallString | `SmallString<N>` | — | C++ only | Fixed string, no heap |
 | ByteRing | `ByteRing` | — | C++ only | Byte I/O ring (`Ring<uint8_t>` semantics) |
 | IntrusiveList | `IntrusiveListHead` | — | C++ only | Intrusive list heads |
-| SpscQueue | `SpscQueue<T>` | — | C++ only | Lock-free 1P1C — not `Queue` / `queue_t` |
+| SpscQueue | `SpscQueue<T>` | — | C++ only | **Wait-free** SPSC — not `Queue` / `queue_t`; not Cortex-M0 |
 | FlatMap | `FlatMap<K,V>` | — | C++ only | Sorted flat array map |
 | TimerWheel | `TimerWheel<N>` | — | C++ only | Hashed timing wheel |
-| DoubleBuffer | `DoubleBuffer<T>` | — | C++ only | Ping-pong block handoff (1P1C) |
-| MpscQueue | `MpscQueue<T>` | — | C++ only | Lock-free MPSC — one consumer only |
+| DoubleBuffer | `DoubleBuffer<T>` | — | C++ only | **Wait-free** ping-pong block |
+| MpscQueue | `MpscQueue<T>` | — | C++ only | **Lock-free** MPSC — one consumer; not Cortex-M0 |
 | EnumMap | `EnumMap<Enum,V,N>` | — | C++ only | Enum-keyed array map |
 | RingLog | `RingLog<Record>` | — | C++ only | Overwriting circular log |
 | SparseSet | `SparseSet` | — | C++ only | Sparse set for active IDs |

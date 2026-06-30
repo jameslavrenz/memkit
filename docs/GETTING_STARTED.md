@@ -231,7 +231,7 @@ Customers link with **`cc`**, not `c++`, and do not need `-lstdc++`. See [DISTRI
 5. Prefer **static storage** on MCU; use arena when several containers share one buffer.
 6. Always check status (`memkit::ok`, `*_status_ok`).
 7. Size buffers yourself — use `MEMKIT_ELEM_STORAGE` or equivalent so capacity is explicit; see [Design philosophy — bounds and sizing](DESIGN_PHILOSOPHY.md#bounds-and-sizing-what-memkit-checks-vs-what-you-own).
-8. **RTOS / ISR:** default is **single-context** per container; C `queue_t` is **not** ISR-safe. For handoff use C++ `SpscQueue` / `MpscQueue` / `DoubleBuffer` or your RTOS lock — see [CONCURRENCY.md](CONCURRENCY.md).
+8. **Concurrency:** memkit is zero-overhead and OS-agnostic — [lock-free trio vs single-threaded containers](CONCURRENCY.md); Cortex-M0/M0+ cannot use the lock-free trio.
 
 ---
 

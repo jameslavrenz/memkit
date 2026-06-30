@@ -63,7 +63,7 @@ These are aimed at **embedded** workflows — ISRs, DMA, rate limits, flight rec
 
 | Category | Types | Typical use |
 |----------|-------|-------------|
-| **Lock-free handoff (C++ only)** | `SpscQueue`, `MpscQueue`, `DoubleBuffer` | ISR ↔ task, DMA ping-pong — **not** general thread-safe containers |
+| **Lock-free handoff (C++ only)** | `SpscQueue`, `MpscQueue`, `DoubleBuffer` | Wait-free / lock-free ISR ↔ task pipelines — **not on Cortex-M0/M0+** |
 | **Intrusive structures** | `IntrusiveListHead`, hooks | Zero-allocation linked lists in your structs |
 | **Timing** | `TimerWheel`, `TokenBucket` | Tick scheduling, rate limiting |
 | **DMA / signal** | `FixedIoVec` (+ `DoubleBuffer` above) | Scatter/gather I/O |
